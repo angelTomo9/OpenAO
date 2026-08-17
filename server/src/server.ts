@@ -949,3 +949,62 @@ createDynamicScheduler(
 );
 
 void saveOnlineStatsSnapshot();
+
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal: string) {
+    if (isShuttingDown) {
+        return;
+    }
+    isShuttingDown = true;
+    console.log(`[Servidor] Señal ${signal} recibida. Iniciando apagado limpio (graceful shutdown)...`);
+
+    // 1. Notificar y cerrar clientes conectados
+    try {
+        const clients = wsServer?.clients;
+        if (clients) {
+            console.log(`[Servidor] Notificando y cerrando conexiones activas...`);
+            for (const client of clients) {
+                try {
+                    if (client.readyState === 1) { // OPEN
+                        handleProtocol.console("El servidor se está reiniciando...", "#E69500", 0, 0, client as any);
+                        client.close(1001, "Servidor reiniciándose");
+                    }
+                } catch (e) {}
+            }
+        }
+    } catch (e) {}
+
+    // 2. Desmarcar personajes conectados en base de datos con timeout de 5s
+    try {
+        console.log(`[Servidor] Desmarcando personajes conectados en la API...`);
+        const resetPromise = funct.fetchUrl("/internal/characters/reset-connected", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: vars.tokenAuth,
+            },
+        });
+
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Timeout esperando respuesta de API")), 5000)
+        );
+
+        const resetResponse = (await Promise.race([resetPromise, timeoutPromise])) as { updated: number } | undefined;
+        console.log(`[Servidor] Apagado limpio: ${resetResponse?.updated ?? 0} personajes desmarcados correctamente.`);
+    } catch (err: any) {
+        console.error(`[Servidor] Advertencia durante apagado limpio: ${err.message}. Continuando cierre...`);
+    }
+
+    // 3. Cerrar servidor HTTP
+    try {
+        httpServer.close();
+    } catch (e) {}
+
+    console.log("[Servidor] Apagado completado exitosamente.");
+    process.exit(0);
+}
+
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
+
