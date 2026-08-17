@@ -762,6 +762,9 @@ function getScoutIdleReferenceAt(client: RuntimeClient, user: ServerCharacter): 
 
 function getDuplicateIpIdlePenalizedClientIds(): Set<string> {
     const penalizedClientIds = new Set<string>();
+    // CGNAT-safe: Allow legitimate players sharing mobile public IPs (CGNAT) to play concurrently.
+    // Only apply scout penalty when concurrent connections from a single IP exceed reasonable abuse threshold.
+    const MAX_CONCURRENT_PER_PUBLIC_IP = 8;
     const clientsByIp = new Map<
         string,
         {
@@ -796,7 +799,7 @@ function getDuplicateIpIdlePenalizedClientIds(): Set<string> {
     }
 
     for (const clientsForIp of clientsByIp.values()) {
-        if (clientsForIp.length < 2) {
+        if (clientsForIp.length < MAX_CONCURRENT_PER_PUBLIC_IP) {
             continue;
         }
 
