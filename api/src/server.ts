@@ -101,6 +101,7 @@ import {
     discardDrafts,
     getGraphicContent,
     getGraphicMetadata,
+    getMapRegion,
     getMapStatus,
     grantMapPermission,
     isProtectedMap,
@@ -108,6 +109,8 @@ import {
     listGraphics,
     listMapOverrides,
     listMapPalette,
+    paintRectangle,
+    paintRectangleSchema,
     paintTiles,
     paintTilesSchema,
     paletteEntrySchema,
@@ -1014,6 +1017,72 @@ app.put("/admin/game-data/maps/:mapNum/tiles", async (request, response) => {
                 authorized.accountId,
             ),
         );
+    } catch (error) {
+        const message =
+            error instanceof Error ? error.message : "Unexpected error";
+        response.status(400).json({ error: message });
+    }
+});
+
+app.put("/admin/game-data/maps/:mapNum/rectangle", async (request, response) => {
+    try {
+        const mapNum = Number.parseInt(request.params.mapNum ?? "", 10);
+
+        if (!Number.isInteger(mapNum) || mapNum <= 0) {
+            response.status(400).json({ error: "Numero de mapa invalido." });
+            return;
+        }
+
+        const overrideProtected = Boolean(request.body?.overrideProtected);
+        const authorized = await requireMapEditSession(
+            request,
+            response,
+            mapNum,
+            overrideProtected,
+        );
+        if (!authorized) return;
+
+        const parsed = paintRectangleSchema.safeParse(request.body);
+
+        if (!parsed.success) {
+            response
+                .status(400)
+                .json({ error: JSON.stringify(parsed.error.issues) });
+            return;
+        }
+
+        const result = await paintRectangle(
+            mapNum,
+            parsed.data,
+            authorized.accountId,
+        );
+        response.json(result);
+    } catch (error) {
+        const message =
+            error instanceof Error ? error.message : "Unexpected error";
+        response.status(400).json({ error: message });
+    }
+});
+
+app.get("/admin/game-data/maps/:mapNum/region", async (request, response) => {
+    try {
+        const mapNum = Number.parseInt(request.params.mapNum ?? "", 10);
+
+        if (!Number.isInteger(mapNum) || mapNum <= 0) {
+            response.status(400).json({ error: "Numero de mapa invalido." });
+            return;
+        }
+
+        const authorized = await requireMapEditSession(request, response, mapNum);
+        if (!authorized) return;
+
+        const fromX = Number.parseInt(request.query.fromX as string ?? "1", 10);
+        const fromY = Number.parseInt(request.query.fromY as string ?? "1", 10);
+        const toX = Number.parseInt(request.query.toX as string ?? "100", 10);
+        const toY = Number.parseInt(request.query.toY as string ?? "100", 10);
+
+        const region = await getMapRegion(mapNum, fromX, fromY, toX, toY, true);
+        response.json(region);
     } catch (error) {
         const message =
             error instanceof Error ? error.message : "Unexpected error";

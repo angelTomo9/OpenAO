@@ -263,11 +263,116 @@ export async function paintTiles(
 
         return { applied: tiles.length };
     } catch (error) {
-        await client.query("ROLLBACK");
+        try {
+            await client.query("ROLLBACK");
+        } catch (rollbackError) {
+            console.error("[worldBuilder] ROLLBACK failed:", rollbackError);
+        }
         throw error;
     } finally {
         client.release();
     }
+}
+
+export const paintRectangleSchema = z.object({
+    fromX: z.coerce.number().int().min(1).max(MAP_SIZE),
+    fromY: z.coerce.number().int().min(1).max(MAP_SIZE),
+    toX: z.coerce.number().int().min(1).max(MAP_SIZE),
+    toY: z.coerce.number().int().min(1).max(MAP_SIZE),
+    layer: z.coerce.number().int().min(1).max(4).default(1),
+    grhIndex: z.coerce.number().int().nonnegative().nullable().optional(),
+    blocked: z.boolean().nullable().optional(),
+});
+
+export type PaintRectangleInput = z.infer<typeof paintRectangleSchema>;
+
+/**
+ * Pinta un rectangulo de tiles como borrador de manera atomica.
+ * Valida limites (max 500 tiles por operacion) y coordenadas base 1..100.
+ */
+export async function paintRectangle(
+    mapNum: number,
+    input: PaintRectangleInput,
+    accountId: string,
+): Promise<{ applied: number; tilesCount: number }> {
+    const minX = Math.min(input.fromX, input.toX);
+    const maxX = Math.max(input.fromX, input.toX);
+    const minY = Math.min(input.fromY, input.toY);
+    const maxY = Math.max(input.fromY, input.toY);
+
+    const width = maxX - minX + 1;
+    const height = maxY - minY + 1;
+    const totalTiles = width * height;
+
+    if (totalTiles > 500) {
+        throw new Error(
+            `El area del rectangulo (${totalTiles} tiles) supera el limite maximo permitido de 500 tiles por operacion.`,
+        );
+    }
+
+    const tiles: TilePaint[] = [];
+
+    for (let x = minX; x <= maxX; x++) {
+        for (let y = minY; y <= maxY; y++) {
+            tiles.push({
+                x,
+                y,
+                layer: input.layer,
+                grhIndex: input.grhIndex,
+                blocked: input.blocked,
+            });
+        }
+    }
+
+    const result = await paintTiles(mapNum, tiles, accountId);
+    return { applied: result.applied, tilesCount: totalTiles };
+}
+
+/**
+ * Obtiene el estado actual de tiles para una region o ventana delimitada del mapa.
+ */
+export async function getMapRegion(
+    mapNum: number,
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    includeDrafts = true,
+): Promise<{ fromX: number; fromY: number; toX: number; toY: number; tiles: MapTileOverride[] }> {
+    const minX = Math.min(fromX, toX);
+    const maxX = Math.max(fromX, toX);
+    const minY = Math.min(fromY, toY);
+    const maxY = Math.max(fromY, toY);
+
+    const query = includeDrafts
+        ? `SELECT DISTINCT ON (x, y, layer) x, y, layer, grh_index, blocked, status
+           FROM game_map_tile_overrides
+           WHERE map_num = $1 AND x >= $2 AND x <= $3 AND y >= $4 AND y <= $5
+           ORDER BY x, y, layer, status ASC`
+        : `SELECT x, y, layer, grh_index, blocked, status
+           FROM game_map_tile_overrides
+           WHERE map_num = $1 AND status = 'published' AND x >= $2 AND x <= $3 AND y >= $4 AND y <= $5
+           ORDER BY x, y, layer ASC`;
+
+    const result = await pool.query<{
+        x: number;
+        y: number;
+        layer: number;
+        grh_index: number | null;
+        blocked: boolean | null;
+        status: "draft" | "published";
+    }>(query, [mapNum, minX, maxX, minY, maxY]);
+
+    const tiles = result.rows.map((row) => ({
+        x: row.x,
+        y: row.y,
+        layer: row.layer,
+        grhIndex: row.grh_index,
+        blocked: row.blocked,
+        status: row.status,
+    }));
+
+    return { fromX: minX, fromY: minY, toX: maxX, toY: maxY, tiles };
 }
 
 /**
