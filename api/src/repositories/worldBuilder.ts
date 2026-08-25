@@ -666,7 +666,11 @@ export async function upsertPaletteEntry(
             updatedAt: row.updated_at.toISOString(),
         };
     } catch (error) {
-        await client.query("ROLLBACK");
+        try {
+            await client.query("ROLLBACK");
+        } catch (rollbackError) {
+            console.error("[worldBuilder] ROLLBACK failed:", rollbackError);
+        }
         throw error;
     } finally {
         client.release();

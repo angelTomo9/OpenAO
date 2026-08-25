@@ -779,12 +779,7 @@ function getDuplicateAccountIdlePenalizedClientIds(): Set<string> {
 
         // Agrupar por cuenta de usuario en lugar de IP para evitar que jugadores
         // de redes móviles (CGNAT) se desconecten entre sí compartiendo IP pública.
-        const accountKey =
-            (user as any).idAccount ||
-            (user as any).account_id ||
-            (client as any).accountId ||
-            socket.getIp(client) ||
-            idUser;
+        const accountKey = user.idAccount || socket.getIp(client) || idUser;
 
         const clientsForAccount = clientsByAccount.get(accountKey) ?? [];
 
