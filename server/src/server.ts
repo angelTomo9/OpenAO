@@ -998,9 +998,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
     // 3. Llamar a la API para desmarcar a todos los personajes conectados
     try {
-        const timeoutPromise = new Promise<{ updated: number }>((_, reject) =>
-            setTimeout(() => reject(new Error("API timeout")), 3500),
-        );
+        let timeoutId: NodeJS.Timeout | undefined;
+        const timeoutPromise = new Promise<{ updated: number }>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error("API timeout")), 3500);
+            timeoutId.unref();
+        });
 
         const fetchPromise = funct.fetchUrl("/internal/characters/reset-connected", {
             method: "POST",
