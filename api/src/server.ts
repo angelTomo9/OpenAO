@@ -100,18 +100,22 @@ import {
     clearTile,
     discardDrafts,
     getGraphicContent,
+    getGraphicMetadata,
     getMapStatus,
     grantMapPermission,
     isProtectedMap,
     listAccountMapPermissions,
     listGraphics,
     listMapOverrides,
+    listMapPalette,
     paintTiles,
     paintTilesSchema,
+    paletteEntrySchema,
     publishMap,
     revertMap,
     revokeMapPermission,
     uploadGraphic,
+    upsertPaletteEntry,
 } from "./repositories/worldBuilder";
 import { MAX_PNG_BYTES } from "./lib/pngValidation";
 import {
@@ -883,6 +887,89 @@ app.get("/game-data/graphics/:grhIndex.png", async (request, response) => {
         response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
         response.setHeader("ETag", `"${graphic.checksum}"`);
         response.send(graphic.content);
+    } catch (error) {
+        const message =
+            error instanceof Error ? error.message : "Unexpected error";
+        response.status(400).json({ error: message });
+    }
+});
+
+/** Devuelve la metadata de resolución de un gráfico para el motor cliente. */
+app.get("/graphics/:grhIndex/metadata", async (request, response) => {
+    try {
+        const grhIndex = Number.parseInt(request.params.grhIndex ?? "", 10);
+
+        if (!Number.isInteger(grhIndex) || grhIndex <= 0) {
+            response.status(400).json({ error: "Indice invalido." });
+            return;
+        }
+
+        const metadata = await getGraphicMetadata(grhIndex);
+        if (!metadata) {
+            response.status(404).json({ error: "Grafico no encontrado." });
+            return;
+        }
+
+        response.json(metadata);
+    } catch (error) {
+        const message =
+            error instanceof Error ? error.message : "Unexpected error";
+        response.status(400).json({ error: message });
+    }
+});
+
+/** Agrega o actualiza una entrada en la paleta del mapa. */
+app.put("/admin/game-data/maps/:mapNum/palette", async (request, response) => {
+    try {
+        const mapNum = Number.parseInt(request.params.mapNum ?? "", 10);
+
+        if (!Number.isInteger(mapNum) || mapNum <= 0) {
+            response.status(400).json({ error: "Numero de mapa invalido." });
+            return;
+        }
+
+        const overrideProtected = Boolean(request.body?.overrideProtected);
+        const authorized = await requireMapEditSession(
+            request,
+            response,
+            mapNum,
+            overrideProtected,
+        );
+        if (!authorized) return;
+
+        const parsed = paletteEntrySchema.safeParse(request.body);
+        if (!parsed.success) {
+            response
+                .status(400)
+                .json({ error: JSON.stringify(parsed.error.issues) });
+            return;
+        }
+
+        const result = await upsertPaletteEntry(
+            mapNum,
+            parsed.data,
+            authorized.accountId,
+        );
+        response.json(result);
+    } catch (error) {
+        const message =
+            error instanceof Error ? error.message : "Unexpected error";
+        response.status(400).json({ error: message });
+    }
+});
+
+/** Lista las entradas de paleta dinámicas registradas para un mapa. */
+app.get("/admin/game-data/maps/:mapNum/palette", async (request, response) => {
+    try {
+        const mapNum = Number.parseInt(request.params.mapNum ?? "", 10);
+
+        if (!Number.isInteger(mapNum) || mapNum <= 0) {
+            response.status(400).json({ error: "Numero de mapa invalido." });
+            return;
+        }
+
+        const palette = await listMapPalette(mapNum);
+        response.json({ mapNum, palette });
     } catch (error) {
         const message =
             error instanceof Error ? error.message : "Unexpected error";

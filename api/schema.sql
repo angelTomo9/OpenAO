@@ -640,3 +640,17 @@ CREATE TABLE IF NOT EXISTS game_map_permissions (
 
 CREATE INDEX IF NOT EXISTS idx_game_map_permissions_account_map
     ON game_map_permissions(account_id, map_num);
+
+-- Entradas de paleta dinamicas por mapa (permite asignar graficos subidos a tiles reusables).
+CREATE TABLE IF NOT EXISTS game_map_palette_overrides (
+    map_num INTEGER NOT NULL CHECK (map_num > 0),
+    palette_id INTEGER NOT NULL CHECK (palette_id > 0),
+    graphics INTEGER[] NOT NULL,
+    blocked BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_by_account_id UUID REFERENCES accounts(id) ON DELETE SET NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (map_num, palette_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_map_palette_overrides_map
+    ON game_map_palette_overrides(map_num);

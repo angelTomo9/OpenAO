@@ -515,3 +515,167 @@ export async function listAccountMapPermissions(
     );
     return result.rows.map((row) => row.map_num);
 }
+
+export type GraphicMetadata = {
+    grhIndex: number;
+    width: number;
+    height: number;
+    frameCount: number;
+    fileNum: number;
+    offX: number;
+    offY: number;
+    isUploaded: boolean;
+    url: string;
+};
+
+export async function getGraphicMetadata(
+    grhIndex: number,
+): Promise<GraphicMetadata | null> {
+    if (grhIndex >= UPLOADED_GRAPHIC_INDEX_START) {
+        const result = await pool.query<{
+            grh_index: number;
+            width: number;
+            height: number;
+        }>(
+            `SELECT grh_index, width, height FROM game_uploaded_graphics WHERE grh_index = $1 LIMIT 1`,
+            [grhIndex],
+        );
+        const row = result.rows[0];
+        if (!row) return null;
+
+        return {
+            grhIndex: row.grh_index,
+            width: row.width,
+            height: row.height,
+            frameCount: 1,
+            fileNum: row.grh_index,
+            offX: 0,
+            offY: 0,
+            isUploaded: true,
+            url: `/admin/game-data/graphics/${row.grh_index}`,
+        };
+    }
+
+    // Gráfico original del juego
+    return {
+        grhIndex,
+        width: 32,
+        height: 32,
+        frameCount: 1,
+        fileNum: grhIndex,
+        offX: 0,
+        offY: 0,
+        isUploaded: false,
+        url: `/graphics/${grhIndex}.png`,
+    };
+}
+
+export const paletteEntrySchema = z.object({
+    paletteId: z.number().int().positive().optional(),
+    graphics: z.array(z.number().int().positive().nullable()).min(1).max(4),
+    blocked: z.boolean().default(false),
+});
+
+export type PaletteEntryInput = z.infer<typeof paletteEntrySchema>;
+
+export type PaletteEntry = {
+    paletteId: number;
+    graphics: (number | null)[];
+    blocked: boolean;
+    updatedAt: string;
+};
+
+/**
+ * Agrega o actualiza una entrada en la paleta de un mapa.
+ * Valida que todos los gráficos referenciados existan en la base o catálogo base.
+ */
+export async function upsertPaletteEntry(
+    mapNum: number,
+    entry: PaletteEntryInput,
+    accountId: string,
+): Promise<PaletteEntry> {
+    // Validar existencia de cada grafico referenciado
+    for (let i = 0; i < entry.graphics.length; i++) {
+        const grh = entry.graphics[i];
+        if (grh != null) {
+            if (grh >= UPLOADED_GRAPHIC_INDEX_START) {
+                const exists = await pool.query(
+                    `SELECT 1 FROM game_uploaded_graphics WHERE grh_index = $1 LIMIT 1`,
+                    [grh],
+                );
+                if (exists.rowCount === 0) {
+                    throw new Error(
+                        `El grafico ${grh} no existe en la base de assets. Subilo antes de asignarlo a la paleta.`,
+                    );
+                }
+            } else if (grh <= 0 || grh > 320151) {
+                throw new Error(
+                    `El indice de grafico ${grh} esta fuera de rango (1..320151).`,
+                );
+            }
+        }
+    }
+
+    let paletteId = entry.paletteId;
+
+    if (!paletteId) {
+        // Asignar siguiente ID de paleta para el mapa (por encima de las paletas estándar base)
+        const nextIdResult = await pool.query<{ next_id: number }>(
+            `SELECT COALESCE(MAX(palette_id), 1000) + 1 AS next_id
+             FROM game_map_palette_overrides
+             WHERE map_num = $1`,
+            [mapNum],
+        );
+        paletteId = Number(nextIdResult.rows[0]?.next_id ?? 1001);
+    }
+
+    const graphicsArray = entry.graphics.map((g) => (g == null ? 0 : g));
+
+    const result = await pool.query<{
+        palette_id: number;
+        graphics: number[];
+        blocked: boolean;
+        updated_at: Date;
+    }>(
+        `INSERT INTO game_map_palette_overrides
+             (map_num, palette_id, graphics, blocked, updated_by_account_id, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (map_num, palette_id) DO UPDATE
+         SET graphics = EXCLUDED.graphics,
+             blocked = EXCLUDED.blocked,
+             updated_by_account_id = EXCLUDED.updated_by_account_id,
+             updated_at = NOW()
+         RETURNING palette_id, graphics, blocked, updated_at`,
+        [mapNum, paletteId, graphicsArray, entry.blocked ?? false, accountId],
+    );
+
+    const row = result.rows[0];
+    return {
+        paletteId: row.palette_id,
+        graphics: row.graphics.map((g) => (g === 0 ? null : g)),
+        blocked: row.blocked,
+        updatedAt: row.updated_at.toISOString(),
+    };
+}
+
+export async function listMapPalette(mapNum: number): Promise<PaletteEntry[]> {
+    const result = await pool.query<{
+        palette_id: number;
+        graphics: number[];
+        blocked: boolean;
+        updated_at: Date;
+    }>(
+        `SELECT palette_id, graphics, blocked, updated_at
+         FROM game_map_palette_overrides
+         WHERE map_num = $1
+         ORDER BY palette_id ASC`,
+        [mapNum],
+    );
+
+    return result.rows.map((row) => ({
+        paletteId: row.palette_id,
+        graphics: row.graphics.map((g) => (g === 0 ? null : g)),
+        blocked: row.blocked,
+        updatedAt: row.updated_at.toISOString(),
+    }));
+}
