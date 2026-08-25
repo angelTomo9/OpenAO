@@ -367,10 +367,10 @@ function trackClientActivity(ws: RuntimeClient, packageID: number) {
     const isPingPacket = packageID === pkg.serverPacketID.ping;
 
     ws.packetCount = Number(ws.packetCount ?? 0) + 1;
-    ws.lastPacketAt = now;
-    ws.lastActivityAt = now;
 
     if (isPingPacket) {
+        ws.lastPacketAt = now;
+        ws.lastActivityAt = now;
         return;
     }
 
