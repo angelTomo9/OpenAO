@@ -700,7 +700,7 @@ function processIdleCharactersTick(now: number) {
         return;
     }
 
-    const penalizedClientIds = getDuplicateIpIdlePenalizedClientIds();
+    const penalizedClientIds = getDuplicateAccountIdlePenalizedClientIds();
 
     for (const idUser in vars.clients) {
         const client = vars.clients[idUser] as RuntimeClient | undefined;
@@ -725,9 +725,9 @@ function processIdleCharactersTick(now: number) {
             continue;
         }
 
-        const isDuplicateIpScout = penalizedClientIds.has(idUser);
-        const effectiveIdleTimeoutMs = isDuplicateIpScout ? DUPLICATE_IP_IDLE_TIMEOUT_MS : idleCharacterTimeoutMs;
-        const idleReferenceAt = isDuplicateIpScout
+        const isDuplicateAccountScout = penalizedClientIds.has(idUser);
+        const effectiveIdleTimeoutMs = isDuplicateAccountScout ? DUPLICATE_IP_IDLE_TIMEOUT_MS : idleCharacterTimeoutMs;
+        const idleReferenceAt = isDuplicateAccountScout
             ? getScoutIdleReferenceAt(client, user)
             : Number(client.lastActivityAt ?? now);
 
@@ -758,9 +758,9 @@ function getScoutIdleReferenceAt(client: RuntimeClient, user: ServerCharacter): 
     return Number(client.connectedAt ?? Date.now());
 }
 
-function getDuplicateIpIdlePenalizedClientIds(): Set<string> {
+function getDuplicateAccountIdlePenalizedClientIds(): Set<string> {
     const penalizedClientIds = new Set<string>();
-    const clientsByIp = new Map<
+    const clientsByAccount = new Map<
         string,
         {
             idUser: string;
@@ -777,34 +777,37 @@ function getDuplicateIpIdlePenalizedClientIds(): Set<string> {
             continue;
         }
 
-        const clientIp = socket.getIp(client);
+        // Agrupar por cuenta de usuario en lugar de IP para evitar que jugadores
+        // de redes móviles (CGNAT) se desconecten entre sí compartiendo IP pública.
+        const accountKey =
+            (user as any).idAccount ||
+            (user as any).account_id ||
+            (client as any).accountId ||
+            socket.getIp(client) ||
+            idUser;
 
-        if (!clientIp) {
-            continue;
-        }
+        const clientsForAccount = clientsByAccount.get(accountKey) ?? [];
 
-        const clientsForIp = clientsByIp.get(clientIp) ?? [];
-
-        clientsForIp.push({
+        clientsForAccount.push({
             idUser,
             connectedAt: Number(client.connectedAt ?? 0),
             miningActive: Boolean(user.harvesting?.active && user.harvesting?.skill === "mining"),
         });
-        clientsByIp.set(clientIp, clientsForIp);
+        clientsByAccount.set(accountKey, clientsForAccount);
     }
 
-    for (const clientsForIp of clientsByIp.values()) {
-        if (clientsForIp.length < 2) {
+    for (const clientsForAccount of clientsByAccount.values()) {
+        if (clientsForAccount.length < 2) {
             continue;
         }
 
-        const hasActiveMiner = clientsForIp.some((entry) => entry.miningActive);
+        const hasActiveMiner = clientsForAccount.some((entry) => entry.miningActive);
 
         if (!hasActiveMiner) {
             continue;
         }
 
-        for (const entry of clientsForIp) {
+        for (const entry of clientsForAccount) {
             if (!entry.miningActive) {
                 penalizedClientIds.add(entry.idUser);
             }
