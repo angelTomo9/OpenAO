@@ -518,7 +518,7 @@ export function useGameSession({
                 });
             };
 
-            socket.onclose = () => {
+            socket.onclose = (event: CloseEvent) => {
                 clearPing();
                 if (isUnmounted || !isCurrentSocketInstance(socket)) {
                     return;
@@ -527,11 +527,22 @@ export function useGameSession({
                 if (activeSessionKeyRef.current === connection.sessionKey) {
                     setIsSceneReadyRef.current(false);
 
+                    // Skip auto-reconnect on intentional clean closures (1000 Normal Closure)
+                    if (event.code === 1000) {
+                        const previousError = latestStatusRef.current.error;
+                        emitStatusRef.current({
+                            connected: false,
+                            connecting: false,
+                            error: previousError || "Conexion cerrada.",
+                        });
+                        return;
+                    }
+
                     if (reconnectAttempt < maxReconnectAttempts) {
                         reconnectAttempt += 1;
                         const backoffMs = Math.min(
                             10000,
-                            1000 * Math.pow(1.5, reconnectAttempt - 1),
+                            1000 * Math.pow(2, reconnectAttempt - 1),
                         );
                         emitStatusRef.current({
                             connected: false,
@@ -573,6 +584,7 @@ export function useGameSession({
                     websocketRef.current.readyState === WebSocket.CLOSED)
             ) {
                 clearReconnectTimer();
+                reconnectAttempt = 0;
                 connectSocket();
             }
         };
