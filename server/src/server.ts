@@ -700,8 +700,6 @@ function processIdleCharactersTick(now: number) {
         return;
     }
 
-    const penalizedClientIds = getDuplicateAccountIdlePenalizedClientIds();
-
     for (const idUser in vars.clients) {
         const client = vars.clients[idUser] as RuntimeClient | undefined;
         const user = (vars.personajes as RuntimeCharacters)[idUser] as ServerCharacter | undefined;
@@ -725,13 +723,9 @@ function processIdleCharactersTick(now: number) {
             continue;
         }
 
-        const isDuplicateAccountScout = penalizedClientIds.has(idUser);
-        const effectiveIdleTimeoutMs = isDuplicateAccountScout ? DUPLICATE_IP_IDLE_TIMEOUT_MS : idleCharacterTimeoutMs;
-        const idleReferenceAt = isDuplicateAccountScout
-            ? getScoutIdleReferenceAt(client, user)
-            : Number(client.lastActivityAt ?? now);
+        const idleReferenceAt = Number(client.lastActivityAt ?? now);
 
-        if (now - idleReferenceAt < effectiveIdleTimeoutMs) {
+        if (now - idleReferenceAt < idleCharacterTimeoutMs) {
             continue;
         }
 
@@ -741,75 +735,6 @@ function processIdleCharactersTick(now: number) {
 
         game.closeForce(idUser);
     }
-}
-
-function getScoutIdleReferenceAt(client: RuntimeClient, user: ServerCharacter): number {
-    const lastMovedAt = Number(user.lastMovementActivityAt ?? 0);
-    const lastCombatActivityAt = Number(user.lastCombatActivityAt ?? 0);
-
-    if (lastCombatActivityAt > 0 && lastCombatActivityAt > lastMovedAt) {
-        return lastCombatActivityAt;
-    }
-
-    if (lastMovedAt > 0) {
-        return lastMovedAt;
-    }
-
-    return Number(client.connectedAt ?? Date.now());
-}
-
-function getDuplicateAccountIdlePenalizedClientIds(): Set<string> {
-    const penalizedClientIds = new Set<string>();
-    const clientsByAccount = new Map<
-        string,
-        {
-            idUser: string;
-            connectedAt: number;
-            miningActive: boolean;
-        }[]
-    >();
-
-    for (const idUser in vars.clients) {
-        const client = vars.clients[idUser] as RuntimeClient | undefined;
-        const user = (vars.personajes as RuntimeCharacters)[idUser] as ServerCharacter | undefined;
-
-        if (!client || !user || user.cerrado) {
-            continue;
-        }
-
-        // Agrupar por cuenta de usuario en lugar de IP para evitar que jugadores
-        // de redes móviles (CGNAT) se desconecten entre sí compartiendo IP pública.
-        const accountKey = user.idAccount || socket.getIp(client) || idUser;
-
-        const clientsForAccount = clientsByAccount.get(accountKey) ?? [];
-
-        clientsForAccount.push({
-            idUser,
-            connectedAt: Number(client.connectedAt ?? 0),
-            miningActive: Boolean(user.harvesting?.active && user.harvesting?.skill === "mining"),
-        });
-        clientsByAccount.set(accountKey, clientsForAccount);
-    }
-
-    for (const clientsForAccount of clientsByAccount.values()) {
-        if (clientsForAccount.length < 2) {
-            continue;
-        }
-
-        const hasActiveMiner = clientsForAccount.some((entry) => entry.miningActive);
-
-        if (!hasActiveMiner) {
-            continue;
-        }
-
-        for (const entry of clientsForAccount) {
-            if (!entry.miningActive) {
-                penalizedClientIds.add(entry.idUser);
-            }
-        }
-    }
-
-    return penalizedClientIds;
 }
 
 function processPendingLogoutTick(now: number) {
