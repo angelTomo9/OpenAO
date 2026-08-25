@@ -968,6 +968,9 @@ app.get("/admin/game-data/maps/:mapNum/palette", async (request, response) => {
             return;
         }
 
+        const authorized = await requireMapEditSession(request, response, mapNum);
+        if (!authorized) return;
+
         const palette = await listMapPalette(mapNum);
         response.json({ mapNum, palette });
     } catch (error) {

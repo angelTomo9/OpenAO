@@ -616,46 +616,61 @@ export async function upsertPaletteEntry(
         }
     }
 
-    let paletteId = entry.paletteId;
+    const client = await pool.connect();
 
-    if (!paletteId) {
-        // Asignar siguiente ID de paleta para el mapa (por encima de las paletas estándar base)
-        const nextIdResult = await pool.query<{ next_id: number }>(
-            `SELECT COALESCE(MAX(palette_id), 1000) + 1 AS next_id
-             FROM game_map_palette_overrides
-             WHERE map_num = $1`,
-            [mapNum],
+    try {
+        await client.query("BEGIN");
+
+        let paletteId = entry.paletteId;
+
+        if (!paletteId) {
+            await client.query(
+                "LOCK TABLE game_map_palette_overrides IN SHARE ROW EXCLUSIVE MODE",
+            );
+            const nextIdResult = await client.query<{ next_id: number }>(
+                `SELECT COALESCE(MAX(palette_id), 1000) + 1 AS next_id
+                 FROM game_map_palette_overrides
+                 WHERE map_num = $1`,
+                [mapNum],
+            );
+            paletteId = Number(nextIdResult.rows[0]?.next_id ?? 1001);
+        }
+
+        const graphicsArray = entry.graphics.map((g) => (g == null ? 0 : g));
+
+        const result = await client.query<{
+            palette_id: number;
+            graphics: number[];
+            blocked: boolean;
+            updated_at: Date;
+        }>(
+            `INSERT INTO game_map_palette_overrides
+                 (map_num, palette_id, graphics, blocked, updated_by_account_id, updated_at)
+             VALUES ($1, $2, $3, $4, $5, NOW())
+             ON CONFLICT (map_num, palette_id) DO UPDATE
+             SET graphics = EXCLUDED.graphics,
+                 blocked = EXCLUDED.blocked,
+                 updated_by_account_id = EXCLUDED.updated_by_account_id,
+                 updated_at = NOW()
+             RETURNING palette_id, graphics, blocked, updated_at`,
+            [mapNum, paletteId, graphicsArray, entry.blocked ?? false, accountId],
         );
-        paletteId = Number(nextIdResult.rows[0]?.next_id ?? 1001);
+
+        await client.query("COMMIT");
+
+        const row = result.rows[0];
+        return {
+            paletteId: row.palette_id,
+            graphics: row.graphics.map((g) => (g === 0 ? null : g)),
+            blocked: row.blocked,
+            updatedAt: row.updated_at.toISOString(),
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
     }
-
-    const graphicsArray = entry.graphics.map((g) => (g == null ? 0 : g));
-
-    const result = await pool.query<{
-        palette_id: number;
-        graphics: number[];
-        blocked: boolean;
-        updated_at: Date;
-    }>(
-        `INSERT INTO game_map_palette_overrides
-             (map_num, palette_id, graphics, blocked, updated_by_account_id, updated_at)
-         VALUES ($1, $2, $3, $4, $5, NOW())
-         ON CONFLICT (map_num, palette_id) DO UPDATE
-         SET graphics = EXCLUDED.graphics,
-             blocked = EXCLUDED.blocked,
-             updated_by_account_id = EXCLUDED.updated_by_account_id,
-             updated_at = NOW()
-         RETURNING palette_id, graphics, blocked, updated_at`,
-        [mapNum, paletteId, graphicsArray, entry.blocked ?? false, accountId],
-    );
-
-    const row = result.rows[0];
-    return {
-        paletteId: row.palette_id,
-        graphics: row.graphics.map((g) => (g === 0 ? null : g)),
-        blocked: row.blocked,
-        updatedAt: row.updated_at.toISOString(),
-    };
 }
 
 export async function listMapPalette(mapNum: number): Promise<PaletteEntry[]> {
