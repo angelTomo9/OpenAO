@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 import {
     paintRectangleSchema,
     paintRectangle,
+    grhIndexSchema,
 } from "../repositories/worldBuilder";
 
 describe("World Builder Rectangle Fill & Bounds Enforcement", () => {
@@ -33,6 +34,13 @@ describe("World Builder Rectangle Fill & Bounds Enforcement", () => {
             toY: 101,
         });
         assert.equal(outOfBoundsY.success, false);
+    });
+
+    it("rejects graphic indexes in the dead zone (320152..999999)", () => {
+        assert.ok(grhIndexSchema.safeParse(0).success);
+        assert.ok(grhIndexSchema.safeParse(320151).success);
+        assert.ok(grhIndexSchema.safeParse(1000000).success);
+        assert.equal(grhIndexSchema.safeParse(400000).success, false);
     });
 
     it("rejects rectangle operations exceeding 500 tile safety limit", async () => {

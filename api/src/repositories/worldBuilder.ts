@@ -180,11 +180,25 @@ export async function listGraphics(limit = 100): Promise<UploadedGraphic[]> {
     }));
 }
 
+export const grhIndexSchema = z.coerce
+    .number()
+    .int()
+    .refine(
+        (val) =>
+            val === 0 ||
+            (val >= 1 && val <= 320151) ||
+            val >= UPLOADED_GRAPHIC_INDEX_START,
+        {
+            message:
+                "El indice de grafico debe ser 0, estar entre 1 y 320151, o ser >= 1000000.",
+        },
+    );
+
 export const tilePaintSchema = z.object({
     x: z.coerce.number().int().min(1).max(MAP_SIZE),
     y: z.coerce.number().int().min(1).max(MAP_SIZE),
     layer: z.coerce.number().int().min(1).max(4),
-    grhIndex: z.coerce.number().int().nonnegative().nullable().optional(),
+    grhIndex: grhIndexSchema.nullable().optional(),
     blocked: z.boolean().nullable().optional(),
 });
 
@@ -280,7 +294,7 @@ export const paintRectangleSchema = z.object({
     toX: z.coerce.number().int().min(1).max(MAP_SIZE),
     toY: z.coerce.number().int().min(1).max(MAP_SIZE),
     layer: z.coerce.number().int().min(1).max(4).default(1),
-    grhIndex: z.coerce.number().int().nonnegative().nullable().optional(),
+    grhIndex: grhIndexSchema.nullable().optional(),
     blocked: z.boolean().nullable().optional(),
 });
 

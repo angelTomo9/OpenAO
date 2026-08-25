@@ -1076,10 +1076,16 @@ app.get("/admin/game-data/maps/:mapNum/region", async (request, response) => {
         const authorized = await requireMapEditSession(request, response, mapNum);
         if (!authorized) return;
 
-        const fromX = Number.parseInt(request.query.fromX as string ?? "1", 10);
-        const fromY = Number.parseInt(request.query.fromY as string ?? "1", 10);
-        const toX = Number.parseInt(request.query.toX as string ?? "100", 10);
-        const toY = Number.parseInt(request.query.toY as string ?? "100", 10);
+        const parseCoord = (val: unknown, defaultVal: number): number => {
+            const parsed = Number.parseInt(String(val ?? ""), 10);
+            if (!Number.isInteger(parsed)) return defaultVal;
+            return Math.max(1, Math.min(100, parsed));
+        };
+
+        const fromX = parseCoord(request.query.fromX, 1);
+        const fromY = parseCoord(request.query.fromY, 1);
+        const toX = parseCoord(request.query.toX, 100);
+        const toY = parseCoord(request.query.toY, 100);
 
         const region = await getMapRegion(mapNum, fromX, fromY, toX, toY, true);
         response.json(region);
