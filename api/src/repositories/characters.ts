@@ -326,19 +326,19 @@ function toRankingCharacterResponse(
     character: RankingCharacterRecord,
 ): RankingCharacterResponse {
     return {
-        id: character.id,
-        name: character.name,
-        level: character.level,
-        exp: character.exp,
-        expNextLevel: character.exp_next_level,
-        kills: character.count_killed,
-        idClase: character.id_clase,
-        idRaza: character.id_raza,
+        id: String(character.id ?? ""),
+        name: String(character.name ?? ""),
+        level: Number(character.level ?? 1),
+        exp: Number(character.exp ?? 0),
+        expNextLevel: Number(character.exp_next_level ?? 0),
+        kills: Number(character.count_killed ?? 0),
+        idClase: Number(character.id_clase ?? 0),
+        idRaza: Number(character.id_raza ?? 0),
         criminal: Boolean(character.criminal),
-        faction: character.faction,
+        faction: String(character.faction ?? "none"),
         clanName: character.clan_name ?? null,
-        headId: character.id_head,
-        bodyId: character.id_body,
+        headId: Number(character.id_head ?? 0),
+        bodyId: Number(character.id_body ?? 0),
         updatedAt: character.updated_at,
     };
 }
@@ -477,14 +477,14 @@ export async function listCharacterRanking(options?: {
         c.level,
         c.exp,
         c.exp_next_level,
-        (c.ciudadanos_matados + c.criminales_matados) AS count_killed,
+        (COALESCE(c.ciudadanos_matados, 0) + COALESCE(c.criminales_matados, 0)) AS count_killed,
         c.id_clase,
         c.id_raza,
         COALESCE(c.criminal, FALSE) AS criminal,
         COALESCE(c.faction, 'none') AS faction,
         cl.name AS clan_name,
         CASE
-          WHEN (c.dead = TRUE OR c.muerto = TRUE OR c.navegando = TRUE) AND c.id_last_head > 0 THEN c.id_last_head
+          WHEN (c.dead = TRUE OR c.muerto = TRUE OR c.navegando = TRUE) AND COALESCE(c.id_last_head, 0) > 0 THEN c.id_last_head
           ELSE c.id_head
         END AS id_head,
         c.id_body,
@@ -502,7 +502,7 @@ export async function listCharacterRanking(options?: {
     );
 
     return {
-        characters: result.rows.map(toRankingCharacterResponse),
+        characters: (result.rows || []).map(toRankingCharacterResponse),
     };
 }
 
