@@ -1,4 +1,4 @@
-﻿{
+{
   "1": {
     "name": "Comerciante de Pociones",
     "npcType": 10,
@@ -7,9 +7,18 @@
     "movement": 0,
     "desc": "Vende pociones curativas, de maná y consumibles básicos.",
     "objs": [
-      { "item": 1, "cant": 1000 },
-      { "item": 2, "cant": 1000 },
-      { "item": 3, "cant": 1000 }
+      {
+        "item": 1,
+        "cant": 1000
+      },
+      {
+        "item": 2,
+        "cant": 1000
+      },
+      {
+        "item": 3,
+        "cant": 1000
+      }
     ],
     "drop": []
   },
@@ -21,9 +30,18 @@
     "movement": 0,
     "desc": "Vende armas de hierro y armaduras de combate.",
     "objs": [
-      { "item": 10, "cant": 100 },
-      { "item": 11, "cant": 100 },
-      { "item": 12, "cant": 100 }
+      {
+        "item": 10,
+        "cant": 100
+      },
+      {
+        "item": 11,
+        "cant": 100
+      },
+      {
+        "item": 12,
+        "cant": 100
+      }
     ],
     "drop": []
   },
@@ -62,7 +80,10 @@
     "def": 2,
     "objs": [],
     "drop": [
-      { "item": 101, "cant": 1 }
+      {
+        "item": 101,
+        "cant": 1
+      }
     ]
   },
   "6": {
@@ -80,7 +101,10 @@
     "def": 6,
     "objs": [],
     "drop": [
-      { "item": 102, "cant": 1 }
+      {
+        "item": 102,
+        "cant": 1
+      }
     ]
   }
 }
