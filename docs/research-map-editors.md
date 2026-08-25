@@ -66,30 +66,63 @@ export interface LegacyTile {
 }
 
 export function parseLegacyBinaryMap(buffer: ArrayBuffer): { width: number; height: number; tiles: LegacyTile[][] } {
+    if (buffer.byteLength < 8) {
+        throw new Error("Invalid map file: buffer too small for header");
+    }
+
     const view = new DataView(buffer);
     let offset = 0;
 
     // Header validation (v0.13 signature: 8 bytes)
     const version = view.getInt16(offset, true);
+    if (version < 0 || version > 100) {
+        throw new Error(`Unsupported map version: ${version}`);
+    }
     offset += 8; // skip header padding
 
     const width = 100;
     const height = 100;
     const tiles: LegacyTile[][] = [];
 
-    for (let y = 1; y <= height; y++) {
+    for (let y = 0; y < height; y++) {
         tiles[y] = [];
-        for (let x = 1; x <= width; x++) {
+        for (let x = 0; x < width; x++) {
+            if (offset >= buffer.byteLength) {
+                throw new Error(`Unexpected EOF at tile (${x + 1}, ${y + 1})`);
+            }
+
             const flags = view.getUint8(offset++);
             const blocked = (flags & 1) !== 0;
+
+            if (offset + 2 > buffer.byteLength) throw new Error(`Truncated layer1 at (${x + 1}, ${y + 1})`);
             const layer1 = view.getUint16(offset, true); offset += 2;
-            const layer2 = (flags & 2) ? view.getUint16(offset, true) : 0;
-            if (flags & 2) offset += 2;
-            const layer3 = (flags & 4) ? view.getUint16(offset, true) : 0;
-            if (flags & 4) offset += 2;
-            const layer4 = (flags & 8) ? view.getUint16(offset, true) : 0;
-            if (flags & 8) offset += 2;
-            const trigger = (flags & 16) ? view.getUint8(offset++) : 0;
+
+            let layer2 = 0;
+            if (flags & 2) {
+                if (offset + 2 > buffer.byteLength) throw new Error(`Truncated layer2 at (${x + 1}, ${y + 1})`);
+                layer2 = view.getUint16(offset, true);
+                offset += 2;
+            }
+
+            let layer3 = 0;
+            if (flags & 4) {
+                if (offset + 2 > buffer.byteLength) throw new Error(`Truncated layer3 at (${x + 1}, ${y + 1})`);
+                layer3 = view.getUint16(offset, true);
+                offset += 2;
+            }
+
+            let layer4 = 0;
+            if (flags & 8) {
+                if (offset + 2 > buffer.byteLength) throw new Error(`Truncated layer4 at (${x + 1}, ${y + 1})`);
+                layer4 = view.getUint16(offset, true);
+                offset += 2;
+            }
+
+            let trigger = 0;
+            if (flags & 16) {
+                if (offset >= buffer.byteLength) throw new Error(`Truncated trigger at (${x + 1}, ${y + 1})`);
+                trigger = view.getUint8(offset++);
+            }
 
             tiles[y][x] = { blocked, layer1, layer2, layer3, layer4, trigger };
         }
