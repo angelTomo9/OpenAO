@@ -335,7 +335,7 @@ function toRankingCharacterResponse(
         idClase: Number(character.id_clase ?? 0),
         idRaza: Number(character.id_raza ?? 0),
         criminal: Boolean(character.criminal),
-        faction: String(character.faction ?? "none"),
+        faction: character.faction ?? "none",
         clanName: character.clan_name ?? null,
         headId: Number(character.id_head ?? 0),
         bodyId: Number(character.id_body ?? 0),
