@@ -1,35 +1,38 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { CombatPositioningEngine } from "../lib/combatPositioning.js";
+import { describe, it, expect } from "vitest";
+import { CombatPositioningEngine, CombatEntityPosition } from "../lib/combatPositioning.js";
 
-describe("CombatPositioningEngine Backstab & Flanking", () => {
-    it("detects FRONTAL attack and grants defender block bonuses", () => {
-        const defender = { x: 0, y: 0, facingAngleDegrees: 0 }; // Facing East
-        const attacker = { x: 5, y: 0, facingAngleDegrees: 180 }; // Standing directly East of defender, facing West
+describe("CombatPositioningEngine Spatial Cones and Backstab Multipliers", () => {
+    // Defender at (10, 10) facing North (PI/2 = 90 deg)
+    const defender: CombatEntityPosition = {
+        x: 10,
+        y: 10,
+        facingAngleRad: Math.PI / 2,
+    };
 
-        const res = CombatPositioningEngine.evaluateAttackVector(attacker, defender);
-        assert.equal(res.vectorType, "FRONTAL");
-        assert.equal(res.damageMultiplier, 1.0);
-        assert.equal(res.defenderBonusBlockChance, 0.15);
+    it("detects BACKSTAB attack from rear 90-degree cone", () => {
+        // Attacker is directly South of defender at (10, 5)
+        const southAttacker: CombatEntityPosition = { x: 10, y: 5, facingAngleRad: Math.PI / 2 };
+        const mods = CombatPositioningEngine.computePositionalModifiers(southAttacker, defender);
+
+        expect(mods.sector).toBe("BACKSTAB");
+        expect(mods.damageMultiplier).toBe(1.40);
+        expect(mods.criticalChanceBonusPercent).toBe(25.0);
     });
 
-    it("detects BACKSTAB attack from directly behind the defender", () => {
-        const defender = { x: 0, y: 0, facingAngleDegrees: 90 }; // Facing North
-        const attacker = { x: 0, y: -5, facingAngleDegrees: 90 }; // Standing directly South (behind), facing North
+    it("detects FLANK attack from lateral sides", () => {
+        // Attacker is East of defender at (15, 10)
+        const eastAttacker: CombatEntityPosition = { x: 15, y: 10, facingAngleRad: Math.PI };
+        const mods = CombatPositioningEngine.computePositionalModifiers(eastAttacker, defender);
 
-        const res = CombatPositioningEngine.evaluateAttackVector(attacker, defender);
-        assert.equal(res.vectorType, "BACKSTAB");
-        assert.equal(res.damageMultiplier, 1.40);
-        assert.equal(res.bonusCriticalChance, 0.25);
+        expect(mods.sector).toBe("FLANK");
+        expect(mods.damageMultiplier).toBe(1.15);
     });
 
-    it("detects FLANK attack from the side", () => {
-        const defender = { x: 0, y: 0, facingAngleDegrees: 0 }; // Facing East
-        const attacker = { x: 0, y: 5, facingAngleDegrees: 270 }; // Standing directly North (left flank), facing South
+    it("safely handles coincident coordinates as FRONTAL", () => {
+        const stackedAttacker: CombatEntityPosition = { x: 10, y: 10, facingAngleRad: 0 };
+        const mods = CombatPositioningEngine.computePositionalModifiers(stackedAttacker, defender);
 
-        const res = CombatPositioningEngine.evaluateAttackVector(attacker, defender);
-        assert.equal(res.vectorType, "FLANK");
-        assert.equal(res.damageMultiplier, 1.15);
-        assert.equal(res.bonusCriticalChance, 0.05);
+        expect(mods.sector).toBe("FRONTAL");
+        expect(mods.damageMultiplier).toBe(1.0);
     });
 });

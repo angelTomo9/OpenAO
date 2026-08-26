@@ -1,96 +1,94 @@
 /**
- * Positional Combat & Backstab Modifier Engine for OpenAO MMORPG.
- * Simulates directional attack vectors, flanking damage bonuses, and backstab critical modifiers
- * based on attacker and defender 2D spatial orientation.
+ * 2D Positional Combat & Backstab / Flanking Angle Engine for OpenAO MMORPG.
+ * Simulates directional attack cones, backstab/flanking critical modifiers,
+ * and frontal shield block mechanics with zero-distance safety.
  */
+
+export type CombatRelativeAngle = "BACKSTAB" | "FLANK" | "FRONTAL";
 
 export interface CombatEntityPosition {
     x: number;
     y: number;
-    facingAngleDegrees: number; // 0 to 359, where 0 is East, 90 is North, 180 is West, 270 is South
+    facingAngleRad: number; // 0 to 2*PI radians (0 = East, PI/2 = North, PI = West, 3*PI/2 = South)
 }
 
-export type AttackVectorType = "FRONTAL" | "FLANK" | "BACKSTAB";
-
-export interface PositionalCombatResult {
-    vectorType: AttackVectorType;
+export interface PositionalDamageModifiers {
+    sector: CombatRelativeAngle;
     damageMultiplier: number;
-    bonusCriticalChance: number;
-    defenderBonusBlockChance: number;
+    criticalChanceBonusPercent: number;
+    defenderParryBlockBonusPercent: number;
 }
 
 export class CombatPositioningEngine {
     /**
-     * Normalizes an angle to be strictly between 0 and 360 degrees.
+     * Resolves the relative positional sector of an attacker with respect to the defender's orientation.
+     * Backstab sector: Rear 90-degree cone (angleDiff >= 135 deg).
+     * Flank sector: Lateral 75-degree cones on left/right (60 <= angleDiff < 135 deg).
+     * Frontal sector: Frontal 120-degree cone (angleDiff < 60 deg).
      */
-    private static normalizeAngle(angle: number): number {
-        let normalized = angle % 360;
-        if (normalized < 0) {
-            normalized += 360;
-        }
-        return normalized;
-    }
-
-    /**
-     * Calculates the absolute shortest difference between two angles in degrees (0 to 180).
-     */
-    private static getAngleDifference(angle1: number, angle2: number): number {
-        const diff = Math.abs(this.normalizeAngle(angle1) - this.normalizeAngle(angle2));
-        return diff > 180 ? 360 - diff : diff;
-    }
-
-    /**
-     * Evaluates the attack vector based on coordinates and orientation.
-     */
-    public static evaluateAttackVector(
+    public static getRelativeAngle(
         attacker: CombatEntityPosition,
         defender: CombatEntityPosition
-    ): PositionalCombatResult {
-        // Calculate the vector from Defender TO Attacker
+    ): CombatRelativeAngle {
         const dx = attacker.x - defender.x;
         const dy = attacker.y - defender.y;
 
-        // Angle from Defender to Attacker
-        // Math.atan2 returns -PI to PI. We convert to 0-360 standard mapping.
-        let attackAngleRadians = Math.atan2(dy, dx);
-        let attackAngleDegrees = this.normalizeAngle((attackAngleRadians * 180) / Math.PI);
-
-        // Calculate the angle difference between Defender's facing angle and the attack origin angle
-        const angleDiff = this.getAngleDifference(defender.facingAngleDegrees, attackAngleDegrees);
-
-        // Determine hit sector
-        // Defender faces X. An attack from directly behind has an angle difference of ~180 degrees.
-        // Backstab cone: 180 +/- 60 degrees (120 to 240 deg from facing) => angleDiff >= 120
-        // Flank cone: +/- 60 to 120 degrees from facing => angleDiff >= 60 and < 120
-        // Frontal cone: +/- 60 degrees from facing => angleDiff < 60
-
-        let vectorType: AttackVectorType = "FRONTAL";
-        let damageMultiplier = 1.0;
-        let bonusCriticalChance = 0.0;
-        let defenderBonusBlockChance = 0.0;
-
-        if (angleDiff >= 135) {
-            // Tightened Backstab cone (90 degrees total, 45 each side of perfect rear)
-            vectorType = "BACKSTAB";
-            damageMultiplier = 1.40; // +40% damage
-            bonusCriticalChance = 0.25; // +25% flat crit chance
-        } else if (angleDiff >= 60) {
-            // Flank cone
-            vectorType = "FLANK";
-            damageMultiplier = 1.15; // +15% damage
-            bonusCriticalChance = 0.05; // +5% flat crit chance
-        } else {
-            // Frontal assault
-            vectorType = "FRONTAL";
-            damageMultiplier = 1.0;
-            defenderBonusBlockChance = 0.15; // +15% flat block/parry chance for defender
+        // Zero-distance guard for stacked identical coordinates
+        if (dx === 0 && dy === 0) {
+            return "FRONTAL";
         }
 
-        return {
-            vectorType,
-            damageMultiplier,
-            bonusCriticalChance,
-            defenderBonusBlockChance,
-        };
+        // Angle of line from defender to attacker
+        let attackAngle = Math.atan2(dy, dx);
+        if (attackAngle < 0) attackAngle += 2 * Math.PI;
+
+        // Difference between attacker's position vector and defender's facing direction
+        let diff = Math.abs(attackAngle - defender.facingAngleRad);
+        if (diff > Math.PI) diff = 2 * Math.PI - diff;
+
+        const diffDeg = (diff * 180) / Math.PI;
+
+        if (diffDeg >= 135) {
+            return "BACKSTAB";
+        } else if (diffDeg >= 60) {
+            return "FLANK";
+        } else {
+            return "FRONTAL";
+        }
+    }
+
+    /**
+     * Calculates the damage and critical strike modifiers based on positional combat sector.
+     */
+    public static computePositionalModifiers(
+        attacker: CombatEntityPosition,
+        defender: CombatEntityPosition
+    ): PositionalDamageModifiers {
+        const sector = this.getRelativeAngle(attacker, defender);
+
+        switch (sector) {
+            case "BACKSTAB":
+                return {
+                    sector: "BACKSTAB",
+                    damageMultiplier: 1.40,
+                    criticalChanceBonusPercent: 25.0,
+                    defenderParryBlockBonusPercent: -100.0,
+                };
+            case "FLANK":
+                return {
+                    sector: "FLANK",
+                    damageMultiplier: 1.15,
+                    criticalChanceBonusPercent: 5.0,
+                    defenderParryBlockBonusPercent: -25.0,
+                };
+            case "FRONTAL":
+            default:
+                return {
+                    sector: "FRONTAL",
+                    damageMultiplier: 1.0,
+                    criticalChanceBonusPercent: 0.0,
+                    defenderParryBlockBonusPercent: 15.0,
+                };
+        }
     }
 }
