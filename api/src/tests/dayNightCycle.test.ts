@@ -1,32 +1,38 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, expect } from "vitest";
 import { DayNightCycleEngine } from "../lib/dayNightCycle.js";
 
-describe("DayNightCycleEngine Solar & Lunar Curves", () => {
-    it("calculates full daylight at noon tick", () => {
-        // Noon is halfway through the day: 7200 ticks
-        const state = DayNightCycleEngine.calculateState(7200);
-        assert.equal(state.phase, "DAY");
-        assert.equal(state.gameHour, 12);
-        assert.equal(state.ambientIntensity, 1.0);
-        assert.ok(state.ambientColor.r >= 0.95);
+describe("DayNightCycleEngine Solar Lighting and Lunar Phases", () => {
+    it("renders full daylight and max intensity at solar noon", () => {
+        // Noon is at 50% of the day: tick 7200 out of 14400
+        const noon = DayNightCycleEngine.calculateAmbientLighting(7200);
+        expect(noon.hourOfDay).toBe(12.0);
+        expect(noon.isNightTime).toBe(false);
+        expect(noon.intensity).toBe(1.0);
+        expect(noon.color.r).toBe(255);
     });
 
-    it("calculates midnight darkness with lunar bonus", () => {
-        // Midnight at tick 0, Day 4 (Full Moon)
-        const fullMoonTick = 4 * DayNightCycleEngine.TICKS_PER_DAY;
-        const state = DayNightCycleEngine.calculateState(fullMoonTick);
-
-        assert.equal(state.phase, "NIGHT");
-        assert.equal(state.gameHour, 0);
-        assert.equal(state.lunarPhase, "FULL_MOON");
-        assert.equal(state.lunarLightBonus, 0.25);
-        assert.equal(state.ambientIntensity, 0.40); // 0.15 base + 0.25 full moon bonus
+    it("renders dark blue tint and low intensity at midnight", () => {
+        // Midnight at tick 0
+        const midnight = DayNightCycleEngine.calculateAmbientLighting(0);
+        expect(midnight.hourOfDay).toBe(0.0);
+        expect(midnight.isNightTime).toBe(true);
+        expect(midnight.intensity).toBe(0.20);
+        expect(midnight.color.b).toBeGreaterThan(midnight.color.r);
     });
 
-    it("overrides ambient lighting for indoor dungeon maps", () => {
-        const state = DayNightCycleEngine.calculateState(7200, true);
-        assert.equal(state.isIndoors, true);
-        assert.equal(state.ambientIntensity, 0.25);
+    it("grants +25% night vision bonus during Full Moon nights", () => {
+        // Full Moon occurs at tick offset 4 * 14400 (day 4 out of 8 in lunar cycle)
+        const fullMoonMidnightTicks = 4 * 14400; // Midnight of day 4
+        const res = DayNightCycleEngine.calculateAmbientLighting(fullMoonMidnightTicks);
+
+        expect(res.moonPhase).toBe("FULL_MOON");
+        expect(res.isNightTime).toBe(true);
+        expect(res.playerNightVisionMultiplier).toBe(1.25);
+    });
+
+    it("overrides ambient lighting inside dungeon interiors", () => {
+        const dungeon = DayNightCycleEngine.calculateAmbientLighting(0, true);
+        expect(dungeon.intensity).toBe(0.70);
+        expect(dungeon.isNightTime).toBe(false);
     });
 });
