@@ -1,7 +1,7 @@
 /**
  * 2D Area of Effect (AoE) Geometric Target Selector for OpenAO MMORPG.
  * Simulates circular blasts, directional cones, linear beams, and ring/donut spells
- * with line-of-sight wall obstruction raycasting.
+ * with faction filtering, friendly fire protection, and line-of-sight wall obstruction raycasting.
  */
 
 export type AoEShapeType = "CIRCLE" | "CONE_SECTOR" | "LINEAR_BEAM" | "DONUT_RING";
@@ -20,12 +20,16 @@ export interface TargetEntity extends Point2D {
 export interface AoEShapeParameters {
     shapeType: AoEShapeType;
     origin: Point2D;
-    radius?: number;          // For CIRCLE, DONUT_RING, CONE_SECTOR
-    innerRadius?: number;     // For DONUT_RING
-    facingAngleRad?: number;  // Direction angle in radians for CONE_SECTOR and LINEAR_BEAM
+    radius?: number;             // For CIRCLE, DONUT_RING, CONE_SECTOR
+    innerRadius?: number;        // For DONUT_RING
+    facingAngleRad?: number;     // Direction angle in radians for CONE_SECTOR and LINEAR_BEAM
     coneSpreadAngleRad?: number; // Spread angle (e.g. PI/3 = 60 deg) for CONE_SECTOR
-    beamLength?: number;      // For LINEAR_BEAM
-    beamWidth?: number;       // For LINEAR_BEAM
+    beamLength?: number;         // For LINEAR_BEAM
+    beamWidth?: number;          // For LINEAR_BEAM
+    casterEntityId?: string;     // Optional caster ID for self-harm filtering
+    casterFaction?: string;      // Optional faction for friendly-fire filtering
+    allowFriendlyFire?: boolean; // Defaults to false
+    allowSelfHarm?: boolean;     // Defaults to false
 }
 
 export class AoETargetSelector {
@@ -92,7 +96,8 @@ export class AoETargetSelector {
     }
 
     /**
-     * Selects all valid living entities inside the AoE shape, checking against line-of-sight obstructions.
+     * Selects all valid target entities inside the AoE shape with team/friendly-fire protection
+     * and line-of-sight wall obstruction checking.
      */
     public static selectTargets(
         entities: TargetEntity[],
@@ -101,6 +106,17 @@ export class AoETargetSelector {
     ): TargetEntity[] {
         return entities.filter((entity) => {
             if (!entity.isAlive) return false;
+
+            // Self-harm filter
+            if (!params.allowSelfHarm && params.casterEntityId && entity.entityId === params.casterEntityId) {
+                return false;
+            }
+
+            // Friendly-fire filter
+            if (!params.allowFriendlyFire && params.casterFaction && entity.faction && entity.faction === params.casterFaction) {
+                return false;
+            }
+
             if (!this.isPointInShape(entity, params)) return false;
 
             // Line of sight check if blocked tiles are provided

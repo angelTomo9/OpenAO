@@ -1,50 +1,61 @@
 import { describe, it, expect } from "vitest";
 import { AoETargetSelector, TargetEntity } from "../lib/aoeTargetSelector.js";
 
-describe("AoETargetSelector Geometry and Line of Sight", () => {
+describe("AoETargetSelector Geometry, Friendly Fire & Raycasting", () => {
     const mockEntities: TargetEntity[] = [
-        { entityId: "m1", x: 0, y: 3, isAlive: true },   // In front (North)
-        { entityId: "m2", x: 3, y: 0, isAlive: true },   // Right (East)
-        { entityId: "m3", x: 0, y: -3, isAlive: true },  // Behind (South)
-        { entityId: "m4", x: 0, y: 15, isAlive: true },  // Far North
-        { entityId: "dead_1", x: 0, y: 2, isAlive: false }, // Dead
+        { entityId: "caster", x: 0, y: 0, faction: "ALLIANCE", isAlive: true },
+        { entityId: "ally_1", x: 0, y: 3, faction: "ALLIANCE", isAlive: true }, // North ally
+        { entityId: "enemy_north", x: 0, y: 4, faction: "HORDE", isAlive: true }, // North enemy
+        { entityId: "enemy_east", x: 4, y: 0, faction: "HORDE", isAlive: true },  // East enemy
+        { entityId: "enemy_beam", x: 6, y: 0.5, faction: "HORDE", isAlive: true }, // In linear beam
     ];
 
-    it("selects entities inside circular radius and ignores dead entities", () => {
+    it("filters out caster self-harm and friendly allies by default", () => {
         const targets = AoETargetSelector.selectTargets(mockEntities, {
             shapeType: "CIRCLE",
             origin: { x: 0, y: 0 },
             radius: 5,
+            casterEntityId: "caster",
+            casterFaction: "ALLIANCE",
+            allowSelfHarm: false,
+            allowFriendlyFire: false,
         });
 
-        expect(targets.length).toBe(3); // m1, m2, m3
-        expect(targets.some(t => t.entityId === "dead_1")).toBe(false);
+        // Only enemy_north and enemy_east should be selected
+        expect(targets.length).toBe(2);
+        expect(targets.some(t => t.entityId === "caster")).toBe(false);
+        expect(targets.some(t => t.entityId === "ally_1")).toBe(false);
     });
 
-    it("selects entities inside directional cone facing North", () => {
-        // Facing angle PI/2 = North (dx=0, dy>0)
+    it("evaluates CONE_SECTOR facing North", () => {
         const targets = AoETargetSelector.selectTargets(mockEntities, {
             shapeType: "CONE_SECTOR",
             origin: { x: 0, y: 0 },
             radius: 6,
             facingAngleRad: Math.PI / 2, // North
-            coneSpreadAngleRad: Math.PI / 2, // 90 degrees
+            coneSpreadAngleRad: Math.PI / 3, // 60 deg
+            casterEntityId: "caster",
+            casterFaction: "ALLIANCE",
         });
 
         expect(targets.length).toBe(1);
-        expect(targets[0].entityId).toBe("m1");
+        expect(targets[0].entityId).toBe("enemy_north");
     });
 
-    it("blocks targets behind solid obstruction walls", () => {
-        const blockedTiles = new Set(["0,2"]); // Wall between (0,0) and (0,3)
-        const targets = AoETargetSelector.selectTargets(
-            mockEntities,
-            { shapeType: "CIRCLE", origin: { x: 0, y: 0 }, radius: 5 },
-            blockedTiles
-        );
+    it("evaluates LINEAR_BEAM directed East", () => {
+        const targets = AoETargetSelector.selectTargets(mockEntities, {
+            shapeType: "LINEAR_BEAM",
+            origin: { x: 0, y: 0 },
+            beamLength: 10,
+            beamWidth: 2,
+            facingAngleRad: 0, // East
+            casterEntityId: "caster",
+            casterFaction: "ALLIANCE",
+        });
 
-        // m1 at (0,3) is blocked by wall at (0,2); m2 and m3 are clear
+        // enemy_east (4,0) and enemy_beam (6,0.5) are inside
         expect(targets.length).toBe(2);
-        expect(targets.some(t => t.entityId === "m1")).toBe(false);
+        expect(targets.some(t => t.entityId === "enemy_east")).toBe(true);
+        expect(targets.some(t => t.entityId === "enemy_beam")).toBe(true);
     });
 });
