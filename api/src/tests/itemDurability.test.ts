@@ -1,54 +1,59 @@
 import { describe, it, expect } from "vitest";
-import { ItemDurabilityEngine, ItemDurabilityState } from "../lib/itemDurability.js";
+import { ItemDurabilityEngine, EquipmentItem } from "../lib/itemDurability.js";
 
-describe("ItemDurabilityEngine Refined Wear & Blacksmith Gold Gating", () => {
-    const sword: ItemDurabilityState = {
-        itemId: "silver_broadsword_01",
-        name: "Silver Broadsword",
-        slot: "WEAPON_MAIN",
-        currentDurability: 50,
-        maxDurability: 50,
-        baseValueGold: 1000,
-        baseAttackOrDefense: 35,
-        isBroken: false,
-    };
-
-    it("applies durability loss and breaks at zero durability", () => {
-        const item = { ...sword, currentDurability: 1 };
-        const res = ItemDurabilityEngine.applyWear(item, 0.5, { rng: () => 0.1 });
-
-        expect(res.isNowBroken).toBe(true);
-        expect(item.currentDurability).toBe(0);
-        expect(ItemDurabilityEngine.getEffectiveStat(item)).toBe(0);
-    });
-
-    it("rejects repair when player lacks sufficient gold", () => {
-        const damagedItem: ItemDurabilityState = {
-            ...sword,
-            currentDurability: 25, // Missing 50% = 200 gold cost
+describe("ItemDurabilityEngine Durability Loss and Blacksmith Gold Verification", () => {
+    it("degrades item on combat hit and flags as broken at zero durability", () => {
+        const sword: EquipmentItem = {
+            id: "sword_01",
+            name: "Broadsword",
+            currentDurability: 2,
+            maxDurability: 50,
+            goldCostPerDurabilityPoint: 5,
             isBroken: false,
         };
 
-        const repairRes = ItemDurabilityEngine.repairItem(damagedItem, 50); // Only 50 gold available
-
-        expect(repairRes.success).toBe(false);
-        expect(repairRes.goldCost).toBe(200);
-        expect(damagedItem.currentDurability).toBe(25); // Durability remains unchanged
+        ItemDurabilityEngine.applyDurabilityLoss(sword, 2);
+        expect(sword.currentDurability).toBe(0);
+        expect(sword.isBroken).toBe(true);
     });
 
-    it("successfully repairs item and deducts gold when funds are sufficient", () => {
-        const damagedItem: ItemDurabilityState = {
-            ...sword,
-            currentDurability: 25,
-            isBroken: true,
+    it("clears isBroken flag even on zero-cost repair path", () => {
+        const brokenFullItem: EquipmentItem = {
+            id: "armor_01",
+            name: "Plate Armor",
+            currentDurability: 100,
+            maxDurability: 100,
+            goldCostPerDurabilityPoint: 10,
+            isBroken: true, // Edge case: flag was true despite full durability
         };
 
-        const repairRes = ItemDurabilityEngine.repairItem(damagedItem, 500);
+        const res = ItemDurabilityEngine.repairItem(brokenFullItem, 500);
+        expect(res.success).toBe(true);
+        expect(res.goldCost).toBe(0);
+        expect(brokenFullItem.isBroken).toBe(false);
+    });
 
-        expect(repairRes.success).toBe(true);
-        expect(repairRes.goldCost).toBe(200);
-        expect(repairRes.remainingGold).toBe(300);
-        expect(damagedItem.currentDurability).toBe(50);
-        expect(damagedItem.isBroken).toBe(false);
+    it("gates repair on player gold balance and prevents free repairs", () => {
+        const item: EquipmentItem = {
+            id: "helm_01",
+            name: "Iron Helm",
+            currentDurability: 10,
+            maxDurability: 20, // 10 missing * 5 gold = 50 gold cost
+            goldCostPerDurabilityPoint: 5,
+            isBroken: false,
+        };
+
+        // Player only has 20 gold (needs 50)
+        const failRes = ItemDurabilityEngine.repairItem(item, 20);
+        expect(failRes.success).toBe(false);
+        expect(item.currentDurability).toBe(10); // Durability not mutated
+
+        // Player has 100 gold
+        const passRes = ItemDurabilityEngine.repairItem(item, 100);
+        expect(passRes.success).toBe(true);
+        expect(passRes.goldCost).toBe(50);
+        expect(passRes.remainingGold).toBe(50);
+        expect(item.currentDurability).toBe(20);
+        expect(item.isBroken).toBe(false);
     });
 });

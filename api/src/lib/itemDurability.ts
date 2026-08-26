@@ -1,100 +1,66 @@
 /**
- * Item Durability Degradation & Blacksmith Repair Engine for OpenAO MMORPG.
- * Simulates combat wear, broken item stat penalties, and dynamic repair gold costs with payment gating.
+ * Weapon and Armor Durability Degradation & Repair Engine for OpenAO MMORPG.
+ * Simulates item wear on combat hits, breakage thresholds, and blacksmith gold repair costs
+ * with strict gold balance gating and broken flag clearance.
  */
 
-export type EquipmentSlot = "WEAPON_MAIN" | "WEAPON_OFFHAND" | "HELMET" | "CHEST_ARMOR" | "SHIELD";
-
-export interface ItemDurabilityState {
-    itemId: string;
+export interface EquipmentItem {
+    id: string;
     name: string;
-    slot: EquipmentSlot;
     currentDurability: number;
     maxDurability: number;
-    baseValueGold: number;
-    baseAttackOrDefense: number;
+    goldCostPerDurabilityPoint: number;
     isBroken: boolean;
 }
 
-export interface DurabilityDegradeOptions {
-    rng?: () => number;
-    isCriticalStrike?: boolean;
-}
-
-export interface RepairItemResult {
+export interface RepairResult {
     success: boolean;
     goldCost: number;
-    remainingGold?: number;
+    remainingGold: number;
     reason?: string;
 }
 
 export class ItemDurabilityEngine {
-    private static readonly REPAIR_COST_FACTOR = 0.40;
-
     /**
-     * Applies durability loss on physical combat action.
+     * Applies durability loss to an equipped item following a combat hit.
      */
-    public static applyWear(
-        item: ItemDurabilityState,
-        wearChance: number,
-        options: DurabilityDegradeOptions = {}
-    ): { durabilityLost: number; isNowBroken: boolean } {
-        if (item.isBroken || item.currentDurability <= 0) {
-            return { durabilityLost: 0, isNowBroken: true };
+    public static applyDurabilityLoss(item: EquipmentItem, lossPoints = 1): boolean {
+        if (item.isBroken) {
+            return true;
         }
 
-        const rng = options.rng || Math.random;
-        const chance = options.isCriticalStrike ? wearChance * 1.5 : wearChance;
+        const safeLoss = Math.max(1, lossPoints);
+        item.currentDurability = Math.max(0, item.currentDurability - safeLoss);
 
-        if (rng() <= chance) {
-            const loss = options.isCriticalStrike ? 2 : 1;
-            item.currentDurability = Math.max(0, item.currentDurability - loss);
-            item.isBroken = item.currentDurability === 0;
-
-            return {
-                durabilityLost: loss,
-                isNowBroken: item.isBroken,
-            };
+        if (item.currentDurability === 0) {
+            item.isBroken = true;
         }
 
-        return { durabilityLost: 0, isNowBroken: false };
+        return item.isBroken;
     }
 
     /**
-     * Calculates the effective combat stat taking broken condition into account.
+     * Calculates the gold required to restore an item to maximum durability.
      */
-    public static getEffectiveStat(item: ItemDurabilityState): number {
-        if (item.isBroken || item.currentDurability <= 0) {
-            return 0;
-        }
-        return item.baseAttackOrDefense;
+    public static calculateRepairCost(item: EquipmentItem): number {
+        const missingDurability = Math.max(0, item.maxDurability - item.currentDurability);
+        return missingDurability * item.goldCostPerDurabilityPoint;
     }
 
     /**
-     * Calculates the gold cost required to repair an item back to full durability.
+     * Repairs an item if the player has sufficient gold.
+     * Clears the isBroken flag and deducts the appropriate gold cost.
      */
-    public static calculateRepairCost(item: ItemDurabilityState): number {
-        if (item.currentDurability >= item.maxDurability || item.maxDurability <= 0) {
-            return 0;
-        }
-
-        const missingFraction = (item.maxDurability - item.currentDurability) / item.maxDurability;
-        const cost = item.baseValueGold * missingFraction * this.REPAIR_COST_FACTOR;
-        return Math.max(1, Math.ceil(cost));
-    }
-
-    /**
-     * Repairs an item to max durability with player gold balance verification.
-     */
-    public static repairItem(item: ItemDurabilityState, availableGold: number): RepairItemResult {
+    public static repairItem(item: EquipmentItem, availableGold: number): RepairResult {
         const cost = this.calculateRepairCost(item);
 
         if (cost === 0) {
+            item.currentDurability = item.maxDurability;
+            item.isBroken = false;
             return {
                 success: true,
                 goldCost: 0,
                 remainingGold: availableGold,
-                reason: "Item is already at maximum durability",
             };
         }
 
@@ -102,7 +68,8 @@ export class ItemDurabilityEngine {
             return {
                 success: false,
                 goldCost: cost,
-                reason: "Insufficient gold to repair item",
+                remainingGold: availableGold,
+                reason: "Insufficient gold to cover repair costs.",
             };
         }
 
