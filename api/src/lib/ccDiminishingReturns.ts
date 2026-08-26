@@ -1,7 +1,7 @@
 /**
  * Crowd Control (CC) Diminishing Returns & Stunlock Immunity Engine for OpenAO MMORPG.
  * Simulates independent DR category tracking, duration decay (100% -> 50% -> 25% -> Immune),
- * and natural 15-second decay timers without spam immunity extension.
+ * memory cleanup of stale entries, and natural 15-second decay timers without spam immunity extension.
  */
 
 export type CCCategory = "STUN" | "ROOT" | "SILENCE" | "DISARM" | "FEAR";
@@ -96,6 +96,20 @@ export class DiminishingReturnsEngine {
             drTier: tier,
             isImmune,
         };
+    }
+
+    /**
+     * Purges stale records older than maxIdleMs to prevent unbounded memory growth.
+     */
+    public purgeStale(currentEpochMs: number, maxIdleMs = 60000): number {
+        let purged = 0;
+        for (const [key, record] of this.records.entries()) {
+            if (currentEpochMs - record.lastEndEpochMs > maxIdleMs) {
+                this.records.delete(key);
+                purged++;
+            }
+        }
+        return purged;
     }
 
     /**
