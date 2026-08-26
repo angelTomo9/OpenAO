@@ -1,118 +1,109 @@
 /**
- * Automated Market Maker (AMM) Liquidity Pool for OpenAO MMORPG.
- * Utilizes the Constant Product Formula (x * y = k) to facilitate instant,
- * decentralized trading of raw materials against a gold reserve without a peer-to-peer order book.
+ * Automated Market Maker (AMM) Constant Product (x * y = k) Liquidity Pool Engine for OpenAO.
+ * Simulates decentralized barter/trading of raw crafting materials against Gold coins
+ * with integer precision clamping, slippage calculation, and liquidity provider share minting.
  */
 
 export interface LiquidityPool {
     poolId: string;
     materialId: string;
-    reserveMaterial: number; // x
-    reserveGold: number;     // y
-    k: number;               // x * y
+    reserveGold: number;     // Integer gold reserve (x)
+    reserveMaterial: number; // Integer material units reserve (y)
+    k: number;               // Constant product invariant = x * y
+    feeBps: number;          // Trading fee in basis points (e.g. 30 = 0.3%)
+    totalLpTokens: number;
+}
+
+export interface SwapQuote {
+    amountIn: number;
+    amountOut: number;
+    feePaid: number;
+    priceImpactPercent: number;
+    effectivePricePerUnit: number;
+    newReserveGold: number;
+    newReserveMaterial: number;
 }
 
 export class AmmLiquidityPoolEngine {
-    private static readonly LP_FEE_PERCENT = 0.01; // 1% fee
+    private static readonly BPS_DIVISOR = 10000;
 
     /**
-     * Initializes a new AMM pool and sets the constant product K.
+     * Initializes a constant-product liquidity pool with integer balance validation.
      */
-    public static initializePool(
+    public static createPool(
         poolId: string,
         materialId: string,
+        initialGold: number,
         initialMaterial: number,
-        initialGold: number
+        feeBps = 30
     ): LiquidityPool {
-        if (!Number.isInteger(initialMaterial) || initialMaterial <= 0) {
-            throw new Error("Initial material reserve must be a positive integer");
-        }
-        if (!Number.isInteger(initialGold) || initialGold <= 0) {
-            throw new Error("Initial gold reserve must be a positive integer");
-        }
+        const gold = Math.max(1, Math.floor(initialGold));
+        const material = Math.max(1, Math.floor(initialMaterial));
+        const k = gold * material;
 
         return {
             poolId,
             materialId,
-            reserveMaterial: initialMaterial,
-            reserveGold: initialGold,
-            k: initialMaterial * initialGold,
+            reserveGold: gold,
+            reserveMaterial: material,
+            k,
+            feeBps: Math.min(1000, Math.max(0, feeBps)),
+            totalLpTokens: Math.floor(Math.sqrt(k)),
         };
     }
 
     /**
-     * Estimates how much Gold a player must pay to receive exactly `amountOut` of Material.
+     * Calculates output material received for a given amount of gold paid (Buy Material).
      */
-    public static getBuyQuote(pool: LiquidityPool, materialAmountOut: number): number {
-        if (!Number.isInteger(materialAmountOut) || materialAmountOut <= 0) {
-            throw new Error("Buy quantity must be a positive integer");
-        }
-        if (materialAmountOut >= pool.reserveMaterial) {
-            throw new Error("Insufficient material liquidity in pool");
-        }
+    public static getBuyQuote(pool: LiquidityPool, goldPaid: number): SwapQuote {
+        const safeGoldIn = Math.max(1, Math.floor(goldPaid));
+        const fee = Math.floor((safeGoldIn * pool.feeBps) / this.BPS_DIVISOR);
+        const goldAfterFee = safeGoldIn - fee;
 
-        // x * y = k
-        // (x - dx) * (y + dy) = k
-        // dy = (k / (x - dx)) - y
-        const newMaterialReserve = pool.reserveMaterial - materialAmountOut;
-        const newGoldReserve = pool.k / newMaterialReserve;
-        const rawGoldRequired = newGoldReserve - pool.reserveGold;
+        const spotPrice = pool.reserveGold / pool.reserveMaterial;
+        const newGoldReserve = pool.reserveGold + goldAfterFee;
+        const newMaterialReserve = Math.floor(pool.k / newGoldReserve);
+        const materialOut = Math.max(0, pool.reserveMaterial - newMaterialReserve);
 
-        // Apply 1% fee on input gold
-        const goldRequiredWithFee = rawGoldRequired / (1.0 - this.LP_FEE_PERCENT);
-        return Math.ceil(goldRequiredWithFee);
+        const effectivePrice = safeGoldIn / Math.max(1, materialOut);
+        const priceImpact = ((effectivePrice - spotPrice) / spotPrice) * 100;
+
+        return {
+            amountIn: safeGoldIn,
+            amountOut: materialOut,
+            feePaid: fee,
+            priceImpactPercent: Math.round(Math.max(0, priceImpact) * 100) / 100,
+            effectivePricePerUnit: Math.round(effectivePrice * 100) / 100,
+            newReserveGold: pool.reserveGold + safeGoldIn,
+            newReserveMaterial: newMaterialReserve,
+        };
     }
 
     /**
-     * Executes a player BUY order (Player gives Gold, receives Material).
+     * Calculates output gold received for a given amount of material sold (Sell Material).
      */
-    public static executeBuy(pool: LiquidityPool, materialAmountOut: number): { goldPaid: number } {
-        const goldPaid = this.getBuyQuote(pool, materialAmountOut);
+    public static getSellQuote(pool: LiquidityPool, materialSold: number): SwapQuote {
+        const safeMaterialIn = Math.max(1, Math.floor(materialSold));
+        const spotPrice = pool.reserveGold / pool.reserveMaterial;
 
-        pool.reserveMaterial -= materialAmountOut;
-        pool.reserveGold += goldPaid;
-        pool.k = pool.reserveMaterial * pool.reserveGold;
+        const newMaterialReserve = pool.reserveMaterial + safeMaterialIn;
+        const newGoldReserve = Math.floor(pool.k / newMaterialReserve);
+        const rawGoldOut = Math.max(0, pool.reserveGold - newGoldReserve);
 
-        return { goldPaid };
-    }
+        const fee = Math.floor((rawGoldOut * pool.feeBps) / this.BPS_DIVISOR);
+        const goldYield = Math.max(0, rawGoldOut - fee);
 
-    /**
-     * Estimates how much Gold a player will receive by selling exactly `amountIn` of Material.
-     */
-    public static getSellQuote(pool: LiquidityPool, materialAmountIn: number): number {
-        if (!Number.isInteger(materialAmountIn) || materialAmountIn <= 0) {
-            return 0;
-        }
+        const effectivePrice = goldYield / safeMaterialIn;
+        const priceImpact = ((spotPrice - effectivePrice) / spotPrice) * 100;
 
-        // Apply 1% fee on the input material before calculating gold output
-        const effectiveMaterialIn = materialAmountIn * (1.0 - this.LP_FEE_PERCENT);
-
-        // (x + dx) * (y - dy) = k
-        // dy = y - (k / (x + dx))
-        const newMaterialReserve = pool.reserveMaterial + effectiveMaterialIn;
-        const newGoldReserve = pool.k / newMaterialReserve;
-        const goldYield = Math.floor(pool.reserveGold - newGoldReserve);
-
-        return Math.max(0, goldYield);
-    }
-
-    /**
-     * Executes a player SELL order (Player gives Material, receives Gold).
-     */
-    public static executeSell(pool: LiquidityPool, materialAmountIn: number): { goldReceived: number } {
-        if (!Number.isInteger(materialAmountIn) || materialAmountIn <= 0) {
-            throw new Error("Sell quantity must be a positive integer");
-        }
-
-        const goldReceived = this.getSellQuote(pool, materialAmountIn);
-        if (goldReceived <= 0) {
-            throw new Error("Trade size too small to yield gold output");
-        }
-
-        pool.reserveMaterial += materialAmountIn;
-        pool.reserveGold -= goldReceived;
-        pool.k = pool.reserveMaterial * pool.reserveGold;
-
-        return { goldReceived };
+        return {
+            amountIn: safeMaterialIn,
+            amountOut: goldYield,
+            feePaid: fee,
+            priceImpactPercent: Math.round(Math.max(0, priceImpact) * 100) / 100,
+            effectivePricePerUnit: Math.round(effectivePrice * 100) / 100,
+            newReserveGold: pool.reserveGold - goldYield,
+            newReserveMaterial: newMaterialReserve,
+        };
     }
 }
