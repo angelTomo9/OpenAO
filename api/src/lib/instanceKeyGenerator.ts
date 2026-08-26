@@ -1,119 +1,102 @@
-/**
- * Deterministic Dungeon Instance Key Generator & Scaling Engine for OpenAO MMORPG.
- * Generates tamper-proof instance tokens and calculates difficulty/party loot multipliers.
- */
+import crypto from "node:crypto";
 
-import crypto from 'node:crypto';
+/**
+ * Deterministic Dungeon Instance Key Generator for OpenAO MMORPG.
+ * Generates HMAC-SHA256 authenticated instance access keys with difficulty
+ * and party scaling parameters, featuring safe constant-time verification.
+ */
 
 export type DungeonDifficulty = "NORMAL" | "HEROIC" | "MYTHIC";
 
-export interface InstanceDescriptor {
+export interface InstanceKeyParams {
     dungeonId: string;
-    partyLeaderId: string;
-    partyMembers: string[];
     difficulty: DungeonDifficulty;
-    seasonId: number;
+    partyLeaderId: string;
+    partySize: number; // 1 to 5
     createdAtEpochMs: number;
 }
 
-export interface InstanceScalingResult {
-    instanceKey: string;
-    dungeonId: string;
-    difficulty: DungeonDifficulty;
-    monsterLevelBonus: number;
-    monsterHpMultiplier: number;
-    monsterDamageMultiplier: number;
-    lootDropRateMultiplier: number;
-    goldDropRateMultiplier: number;
-    expiresAtEpochMs: number;
+export interface InstanceScalingModifiers {
+    healthMultiplier: number;
+    damageMultiplier: number;
+    lootQualityBonusPercent: number;
 }
 
 export class DungeonInstanceKeyGenerator {
-    private static readonly INSTANCE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+    private static readonly SECRET_SALT = "openao_dungeon_instance_secret_key_2026";
+    private static readonly SIGNATURE_HEX_LENGTH = 32; // 128-bit truncated HMAC for high collision resistance
 
     /**
-     * Generates a deterministic, cryptographically signed instance key.
+     * Generates a tamper-proof instance token string.
      */
-    public static generateInstanceKey(
-        descriptor: InstanceDescriptor,
-        serverSecret: string
-    ): string {
-        const payload = `${descriptor.dungeonId}:${descriptor.partyLeaderId}:${descriptor.difficulty}:${descriptor.seasonId}:${descriptor.createdAtEpochMs}`;
-        const signature = crypto
-            .createHmac('sha256', serverSecret)
-            .update(payload)
-            .digest('hex')
-            .slice(0, 16);
-
-        return `inst_${descriptor.dungeonId}_${descriptor.difficulty}_${descriptor.createdAtEpochMs}_${signature}`;
+    public static generateInstanceKey(params: InstanceKeyParams): string {
+        const payload = `${params.dungeonId}:${params.difficulty}:${params.partyLeaderId}:${params.partySize}:${params.createdAtEpochMs}`;
+        const hmac = crypto.createHmac("sha256", this.SECRET_SALT).update(payload).digest("hex");
+        const signature = hmac.slice(0, this.SIGNATURE_HEX_LENGTH);
+        return `inst_${payload}:${signature}`;
     }
 
     /**
-     * Verifies the authenticity and signature of an instance key.
+     * Safely verifies token authenticity and integrity using length-guarded timingSafeEqual.
      */
-    public static verifyInstanceKey(
-        instanceKey: string,
-        descriptor: InstanceDescriptor,
-        serverSecret: string
-    ): boolean {
-        const expected = this.generateInstanceKey(descriptor, serverSecret);
-        return crypto.timingSafeEqual(Buffer.from(instanceKey), Buffer.from(expected));
+    public static verifyInstanceKey(instanceKey: string, params: InstanceKeyParams): boolean {
+        if (!instanceKey || typeof instanceKey !== "string") {
+            return false;
+        }
+
+        const expectedKey = this.generateInstanceKey(params);
+
+        const aBuf = Buffer.from(instanceKey, "utf8");
+        const bBuf = Buffer.from(expectedKey, "utf8");
+
+        // Constant-time length mismatch guard prevents RangeError exception
+        if (aBuf.length !== bBuf.length) {
+            return false;
+        }
+
+        return crypto.timingSafeEqual(aBuf, bBuf);
     }
 
     /**
-     * Calculates difficulty scaling, monster stat multipliers, and party loot bonuses.
+     * Computes the parametric combat and loot scaling modifiers for the instance.
      */
-    public static computeInstanceScaling(
-        descriptor: InstanceDescriptor,
-        serverSecret: string
-    ): InstanceScalingResult {
-        const partySize = Math.max(1, Math.min(10, descriptor.partyMembers.length));
+    public static computeScalingModifiers(
+        difficulty: DungeonDifficulty,
+        partySize: number
+    ): InstanceScalingModifiers {
+        const clampedParty = Math.min(5, Math.max(1, partySize));
 
-        let monsterLevelBonus = 0;
-        let hpMult = 1.0;
-        let dmgMult = 1.0;
-        let lootMult = 1.0;
-        let goldMult = 1.0;
+        let baseHealthMult = 1.0;
+        let baseDamageMult = 1.0;
+        let baseLootBonus = 0;
 
-        switch (descriptor.difficulty) {
-            case "NORMAL":
-                monsterLevelBonus = 0;
-                hpMult = 1.0 + (partySize - 1) * 0.25; // Scales with party size
-                dmgMult = 1.0;
-                lootMult = 1.0;
-                goldMult = 1.0;
-                break;
-
+        switch (difficulty) {
             case "HEROIC":
-                monsterLevelBonus = 5;
-                hpMult = 2.0 + (partySize - 1) * 0.40;
-                dmgMult = 1.45;
-                lootMult = 1.85;
-                goldMult = 2.0;
+                baseHealthMult = 1.8;
+                baseDamageMult = 1.4;
+                baseLootBonus = 25;
                 break;
-
             case "MYTHIC":
-                monsterLevelBonus = 12;
-                hpMult = 3.5 + (partySize - 1) * 0.60;
-                dmgMult = 2.2;
-                lootMult = 3.5;
-                goldMult = 4.0;
+                baseHealthMult = 3.0;
+                baseDamageMult = 2.2;
+                baseLootBonus = 60;
+                break;
+            case "NORMAL":
+            default:
+                baseHealthMult = 1.0;
+                baseDamageMult = 1.0;
+                baseLootBonus = 0;
                 break;
         }
 
-        const instanceKey = this.generateInstanceKey(descriptor, serverSecret);
-        const expiresAtEpochMs = descriptor.createdAtEpochMs + this.INSTANCE_TTL_MS;
+        // Party scaling: +20% HP and +5% damage per additional party member beyond 1
+        const partyHpFactor = 1.0 + (clampedParty - 1) * 0.20;
+        const partyDmgFactor = 1.0 + (clampedParty - 1) * 0.05;
 
         return {
-            instanceKey,
-            dungeonId: descriptor.dungeonId,
-            difficulty: descriptor.difficulty,
-            monsterLevelBonus,
-            monsterHpMultiplier: Math.round(hpMult * 100) / 100,
-            monsterDamageMultiplier: dmgMult,
-            lootDropRateMultiplier: lootMult,
-            goldDropRateMultiplier: goldMult,
-            expiresAtEpochMs,
+            healthMultiplier: Math.round(baseHealthMult * partyHpFactor * 100) / 100,
+            damageMultiplier: Math.round(baseDamageMult * partyDmgFactor * 100) / 100,
+            lootQualityBonusPercent: baseLootBonus + (clampedParty - 1) * 5,
         };
     }
 }

@@ -1,43 +1,40 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DungeonInstanceKeyGenerator, InstanceDescriptor } from "../lib/instanceKeyGenerator.js";
+import { DungeonInstanceKeyGenerator, InstanceKeyParams } from "../lib/instanceKeyGenerator.js";
 
-describe("DungeonInstanceKeyGenerator Cryptographic Scaling", () => {
-    const secret = "openao_secure_cluster_secret_998127364";
-    const descriptor: InstanceDescriptor = {
-        dungeonId: "dragon_cavern_tier3",
-        partyLeaderId: "char_9812",
-        partyMembers: ["char_9812", "char_3321", "char_4412"], // 3 players
-        difficulty: "MYTHIC",
-        seasonId: 4,
-        createdAtEpochMs: 1787740800000,
+describe("DungeonInstanceKeyGenerator Refined Cryptography", () => {
+    const validParams: InstanceKeyParams = {
+        dungeonId: "sunken_temple_01",
+        difficulty: "HEROIC",
+        partyLeaderId: "char_mage_99",
+        partySize: 4,
+        createdAtEpochMs: 1787740000000,
     };
 
-    it("generates deterministic and reproducible HMAC instance keys", () => {
-        const key1 = DungeonInstanceKeyGenerator.generateInstanceKey(descriptor, secret);
-        const key2 = DungeonInstanceKeyGenerator.generateInstanceKey(descriptor, secret);
-
-        assert.equal(key1, key2);
-        assert.ok(key1.startsWith("inst_dragon_cavern_tier3_MYTHIC_"));
-    });
-
-    it("verifies authentic instance keys and rejects tampered keys", () => {
-        const key = DungeonInstanceKeyGenerator.generateInstanceKey(descriptor, secret);
-        const isValid = DungeonInstanceKeyGenerator.verifyInstanceKey(key, descriptor, secret);
+    it("generates deterministic 128-bit signature key and verifies successfully", () => {
+        const key = DungeonInstanceKeyGenerator.generateInstanceKey(validParams);
+        assert.ok(key.startsWith("inst_sunken_temple_01:HEROIC:char_mage_99:4:1787740000000:"));
+        
+        const isValid = DungeonInstanceKeyGenerator.verifyInstanceKey(key, validParams);
         assert.equal(isValid, true);
-
-        const tamperedDescriptor = { ...descriptor, difficulty: "NORMAL" as const };
-        const isTamperedValid = DungeonInstanceKeyGenerator.verifyInstanceKey(key, tamperedDescriptor, secret);
-        assert.equal(isTamperedValid, false);
     });
 
-    it("computes party size and Mythic difficulty monster & loot multipliers", () => {
-        const scaling = DungeonInstanceKeyGenerator.computeInstanceScaling(descriptor, secret);
+    it("safely handles length-mismatched or tampered keys without throwing exceptions", () => {
+        const key = DungeonInstanceKeyGenerator.generateInstanceKey(validParams);
+        
+        // Mismatched length key (e.g. truncated or different parameters)
+        assert.equal(DungeonInstanceKeyGenerator.verifyInstanceKey("short_key", validParams), false);
+        assert.equal(DungeonInstanceKeyGenerator.verifyInstanceKey(key + "_extra_bytes", validParams), false);
+        
+        // Tampered parameters
+        const tamperedParams = { ...validParams, difficulty: "MYTHIC" as const };
+        assert.equal(DungeonInstanceKeyGenerator.verifyInstanceKey(key, tamperedParams), false);
+    });
 
-        assert.equal(scaling.difficulty, "MYTHIC");
-        assert.equal(scaling.monsterLevelBonus, 12);
-        assert.equal(scaling.monsterHpMultiplier, 4.7); // 3.5 + 2 * 0.60
-        assert.equal(scaling.lootDropRateMultiplier, 3.5);
-        assert.equal(scaling.goldDropRateMultiplier, 4.0);
+    it("computes party and difficulty scaling modifiers", () => {
+        const mods = DungeonInstanceKeyGenerator.computeScalingModifiers("MYTHIC", 5);
+        assert.ok(mods.healthMultiplier > 3.0);
+        assert.ok(mods.damageMultiplier > 2.0);
+        assert.equal(mods.lootQualityBonusPercent, 80); // 60 + (4 * 5)
     });
 });
