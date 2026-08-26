@@ -1,11 +1,11 @@
 /**
  * Mineral & Resource Vein Depletion & Respawn Tracker for OpenAO MMORPG.
- * Simulates ore extraction yields, mining skill scaling, node lock contention,
+ * Simulates ore extraction yields, mining skill scaling, exclusive node lock enforcement,
  * and randomized respawn tick scheduling.
  */
 
 export type VeinType = "COPPER" | "IRON" | "SILVER" | "GOLD" | "MITHRIL";
-export type VeinState = "PRISTINE" | "PARTIALLY_MINED" | "DEPLETED" | "RESPAWNING";
+export type VeinState = "PRISTINE" | "PARTIALLY_MINED" | "RESPAWNING";
 
 export interface MineralVein {
     veinId: string;
@@ -25,7 +25,7 @@ export interface MineAttemptParams {
     playerId: string;
     miningSkill: number; // 1 to 100
     pickaxeTier: number; // 1 (wood), 2 (iron), 3 (steel), 4 (mithril)
-    rng?: () => number; // Optional RNG injector for deterministic tests
+    rng?: () => number;
 }
 
 export interface MineAttemptResult {
@@ -60,12 +60,12 @@ export class ResourceVeinTracker {
 
     public acquireVeinLock(veinId: string, playerId: string): boolean {
         const vein = this.veins.get(veinId);
-        if (!vein || vein.state === "DEPLETED" || vein.state === "RESPAWNING") {
+        if (!vein || vein.state === "RESPAWNING") {
             return false;
         }
 
         if (vein.activeMinerPlayerId && vein.activeMinerPlayerId !== playerId) {
-            return false; // Contention lock
+            return false;
         }
 
         vein.activeMinerPlayerId = playerId;
@@ -85,8 +85,13 @@ export class ResourceVeinTracker {
             return { success: false, oreExtracted: 0, veinDepleted: false, skillExperienceGained: 0, reason: "Vein not found" };
         }
 
-        if (vein.state === "DEPLETED" || vein.state === "RESPAWNING" || vein.remainingOreUnits <= 0) {
+        if (vein.state === "RESPAWNING" || vein.remainingOreUnits <= 0) {
             return { success: false, oreExtracted: 0, veinDepleted: true, skillExperienceGained: 0, reason: "Vein is depleted" };
+        }
+
+        // Strict lock holder verification
+        if (vein.activeMinerPlayerId !== params.playerId) {
+            return { success: false, oreExtracted: 0, veinDepleted: false, skillExperienceGained: 0, reason: "Player does not hold the lock for this vein" };
         }
 
         const config = VEIN_CONFIGS[vein.veinType];
@@ -111,7 +116,7 @@ export class ResourceVeinTracker {
 
         const isDepleted = vein.remainingOreUnits <= 0;
         if (isDepleted) {
-            vein.state = "DEPLETED";
+            vein.state = "RESPAWNING";
             const jitter = 0.85 + rng() * 0.30;
             vein.respawnTicksRemaining = Math.floor(config.baseRespawnTicks * jitter);
             vein.activeMinerPlayerId = null;
@@ -131,13 +136,12 @@ export class ResourceVeinTracker {
         let respawnedCount = 0;
 
         for (const vein of this.veins.values()) {
-            if (vein.state === "DEPLETED" || vein.state === "RESPAWNING") {
+            if (vein.state === "RESPAWNING") {
                 vein.respawnTicksRemaining--;
 
                 if (vein.respawnTicksRemaining <= 0) {
-                    const config = VEIN_CONFIGS[vein.veinType];
                     vein.state = "PRISTINE";
-                    vein.remainingOreUnits = config.maxUnits;
+                    vein.remainingOreUnits = vein.totalOreUnits;
                     vein.respawnTicksRemaining = 0;
                     vein.activeMinerPlayerId = null;
                     respawnedCount++;

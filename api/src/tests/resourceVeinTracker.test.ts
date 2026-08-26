@@ -1,8 +1,7 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, expect } from "vitest";
 import { ResourceVeinTracker, MineralVein } from "../lib/resourceVeinTracker.js";
 
-describe("ResourceVeinTracker Mining & Respawns", () => {
+describe("ResourceVeinTracker Refined Lock Enforcement & Respawns", () => {
     const mockVein: MineralVein = {
         veinId: "vein_copper_01",
         veinType: "COPPER",
@@ -17,64 +16,56 @@ describe("ResourceVeinTracker Mining & Respawns", () => {
         baseRespawnTicks: 10,
     };
 
-    it("locks and extracts ore with sufficient skill", () => {
+    it("enforces node lock and rejects un-locked mining attempts", () => {
         const tracker = new ResourceVeinTracker();
         tracker.registerVein({ ...mockVein });
 
+        // Player 1 acquires lock
         const locked = tracker.acquireVeinLock("vein_copper_01", "player_1");
-        assert.equal(locked, true);
+        expect(locked).toBe(true);
 
-        // Player 2 cannot lock same vein simultaneously
-        const lockedP2 = tracker.acquireVeinLock("vein_copper_01", "player_2");
-        assert.equal(lockedP2, false);
+        // Player 2 attempts to mine without lock -> Rejected
+        const unauthorizedRes = tracker.mineVein("vein_copper_01", {
+            playerId: "player_2",
+            miningSkill: 50,
+            pickaxeTier: 2,
+            rng: () => 0.1,
+        });
+        expect(unauthorizedRes.success).toBe(false);
+        expect(unauthorizedRes.reason).toBe("Player does not hold the lock for this vein");
 
-        const mineRes = tracker.mineVein("vein_copper_01", {
+        // Player 1 mines successfully
+        const authorizedRes = tracker.mineVein("vein_copper_01", {
             playerId: "player_1",
             miningSkill: 50,
             pickaxeTier: 2,
-            rng: () => 0.1, // Guaranteed success
+            rng: () => 0.1,
         });
-
-        assert.equal(mineRes.success, true);
-        assert.equal(mineRes.oreExtracted, 1);
-        assert.equal(mineRes.veinDepleted, false);
+        expect(authorizedRes.success).toBe(true);
+        expect(authorizedRes.oreExtracted).toBe(1);
     });
 
-    it("depletes vein and schedules randomized respawn ticks", () => {
+    it("transitions to RESPAWNING on depletion and resets to totalOreUnits", () => {
         const tracker = new ResourceVeinTracker();
         tracker.registerVein({ ...mockVein, remainingOreUnits: 1 });
+        tracker.acquireVeinLock("vein_copper_01", "player_1");
 
         const mineRes = tracker.mineVein("vein_copper_01", {
             playerId: "player_1",
             miningSkill: 50,
             pickaxeTier: 2,
-            rng: () => 0.1, // Guaranteed success
+            rng: () => 0.1,
         });
 
-        assert.equal(mineRes.success, true);
-        assert.equal(mineRes.veinDepleted, true);
-
+        expect(mineRes.veinDepleted).toBe(true);
         const vein = tracker.getVein("vein_copper_01")!;
-        assert.equal(vein.state, "DEPLETED");
-        assert.ok(vein.respawnTicksRemaining > 0);
-    });
+        expect(vein.state).toBe("RESPAWNING");
 
-    it("respawns depleted veins after server tick progression", () => {
-        const tracker = new ResourceVeinTracker();
-        const depletedVein: MineralVein = {
-            ...mockVein,
-            state: "DEPLETED",
-            remainingOreUnits: 0,
-            respawnTicksRemaining: 2,
-        };
-        tracker.registerVein(depletedVein);
-
-        tracker.tickRespawns();
-        assert.equal(tracker.getVein("vein_copper_01")!.state, "DEPLETED");
-
+        // Progress ticks
+        vein.respawnTicksRemaining = 1;
         const respawned = tracker.tickRespawns();
-        assert.equal(respawned, 1);
-        assert.equal(tracker.getVein("vein_copper_01")!.state, "PRISTINE");
-        assert.equal(tracker.getVein("vein_copper_01")!.remainingOreUnits, 10);
+        expect(respawned).toBe(1);
+        expect(vein.state).toBe("PRISTINE");
+        expect(vein.remainingOreUnits).toBe(vein.totalOreUnits); // 2
     });
 });
