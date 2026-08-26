@@ -1,97 +1,70 @@
 /**
- * City Alignment Market Transaction Tax & Tariff Engine for OpenAO MMORPG.
- * Simulates bilateral faction alignments (buyer & seller), city governance tariffs,
- * black market surcharges, and municipal treasury revenue distribution.
+ * City Alignment Market Transaction Tax Policy Engine for OpenAO MMORPG.
+ * Computes bilateral buyer/seller alignment tariffs, mayor guild discounts,
+ * and immutable black market surcharges.
  */
 
-export type CharacterFactionAlignment = "ROYAL_CITIZEN" | "IMPERIAL_LEGION" | "CHAOS_OUTLAW" | "NEUTRAL_NOMAD";
-export type CityJurisdiction = "ROYAL_CAPITAL" | "IMPERIAL_STRONGHOLD" | "CHAOS_HAVEN" | "FREE_TRADE_OUTPOST";
+export type CityAlignment = "ORDER_CITIZEN" | "NEUTRAL_MERCHANT" | "CHAOS_OUTLAW";
 
-export interface MarketTaxCalculationParams {
-    listingPriceGold: number;
-    sellerAlignment: CharacterFactionAlignment;
-    buyerAlignment: CharacterFactionAlignment;
-    cityJurisdiction: CityJurisdiction;
-    isMayorGuildMember?: boolean; // Ruling guild members get 50% discount on standard taxes
+export interface TransactionTaxParams {
+    cityAlignment: CityAlignment;
+    sellerAlignment: CityAlignment;
+    buyerAlignment: CityAlignment;
+    itemGoldPrice: number;
+    isSellerInMayorGuild: boolean;
 }
 
-export interface MarketTaxCalculationResult {
-    listingPriceGold: number;
-    nominalTaxRatePercent: number;
-    effectiveTaxRatePercent: number;
-    totalTaxPaidGold: number;
-    netSellerProceedsGold: number;
-    treasuryDepositGold: number; // 80% to city vault
-    goldSinkBurntGold: number;   // 20% permanently removed from economy
-    isBlackMarketTariff: boolean;
+export interface TaxCalculationResult {
+    effectiveTaxRatePercent: number; // e.g. 5.0 for 5%
+    taxGoldAmount: number;
+    sellerNetYieldGold: number;
+    appliedDiscounts: string[];
+    appliedSurcharges: string[];
 }
 
 export class MarketTaxPolicyEngine {
-    private static readonly BASE_TAX_ALLIED = 0.03;      // 3%
-    private static readonly BASE_TAX_NEUTRAL = 0.06;     // 6%
-    private static readonly BASE_TAX_FREE_OUTPOST = 0.04; // 4%
-    private static readonly BLACK_MARKET_SURCHARGE = 0.15; // 15% for outlaws or cross-enemy trades in civilized capitals
-    private static readonly TREASURY_SHARE = 0.80;       // 80% to city treasury
+    private static readonly BASE_TAX_RATE = 0.05;          // 5% standard city tax
+    private static readonly MAYOR_DISCOUNT = 0.50;         // 50% discount on base tax (tax becomes 2.5%)
+    private static readonly BLACK_MARKET_SURCHARGE = 0.15; // +15% surcharge for outlaw / enemy trades
 
-    public static computeMarketTax(params: MarketTaxCalculationParams): MarketTaxCalculationResult {
-        if (!Number.isInteger(params.listingPriceGold) || params.listingPriceGold <= 0) {
-            throw new Error("Listing price must be a positive integer");
+    /**
+     * Calculates the tax rate and net proceeds for a market transaction.
+     */
+    public static calculateTax(params: TransactionTaxParams): TaxCalculationResult {
+        const basePrice = Math.max(1, Math.floor(params.itemGoldPrice));
+        const appliedDiscounts: string[] = [];
+        const appliedSurcharges: string[] = [];
+
+        // Check if trade involves enemy alignment (e.g. Chaos outlaw trading in Order city)
+        const isBlackMarketTrade =
+            (params.cityAlignment === "ORDER_CITIZEN" && (params.sellerAlignment === "CHAOS_OUTLAW" || params.buyerAlignment === "CHAOS_OUTLAW")) ||
+            (params.cityAlignment === "CHAOS_OUTLAW" && (params.sellerAlignment === "ORDER_CITIZEN" || params.buyerAlignment === "ORDER_CITIZEN"));
+
+        let baseRate = this.BASE_TAX_RATE;
+
+        // Apply Mayor discount only to legal aligned trades
+        if (params.isSellerInMayorGuild && !isBlackMarketTrade) {
+            baseRate *= this.MAYOR_DISCOUNT;
+            appliedDiscounts.push("Mayor Guild 50% Base Tax Discount");
         }
 
-        const price = params.listingPriceGold;
-        let taxRate = this.BASE_TAX_NEUTRAL;
-        let isBlackMarket = false;
+        let totalRate = baseRate;
 
-        if (params.cityJurisdiction === "FREE_TRADE_OUTPOST") {
-            taxRate = this.BASE_TAX_FREE_OUTPOST;
-        } else if (params.cityJurisdiction === "ROYAL_CAPITAL") {
-            if (params.sellerAlignment === "CHAOS_OUTLAW" || params.buyerAlignment === "CHAOS_OUTLAW") {
-                taxRate = this.BLACK_MARKET_SURCHARGE;
-                isBlackMarket = true;
-            } else if (params.sellerAlignment === "ROYAL_CITIZEN" && params.buyerAlignment === "ROYAL_CITIZEN") {
-                taxRate = this.BASE_TAX_ALLIED;
-            } else {
-                taxRate = this.BASE_TAX_NEUTRAL;
-            }
-        } else if (params.cityJurisdiction === "IMPERIAL_STRONGHOLD") {
-            if (params.sellerAlignment === "CHAOS_OUTLAW" || params.buyerAlignment === "CHAOS_OUTLAW") {
-                taxRate = this.BLACK_MARKET_SURCHARGE;
-                isBlackMarket = true;
-            } else if (params.sellerAlignment === "IMPERIAL_LEGION" && params.buyerAlignment === "IMPERIAL_LEGION") {
-                taxRate = this.BASE_TAX_ALLIED;
-            } else {
-                taxRate = this.BASE_TAX_NEUTRAL;
-            }
-        } else if (params.cityJurisdiction === "CHAOS_HAVEN") {
-            if (params.sellerAlignment === "CHAOS_OUTLAW" && params.buyerAlignment === "CHAOS_OUTLAW") {
-                taxRate = this.BASE_TAX_ALLIED;
-            } else {
-                taxRate = this.BASE_TAX_NEUTRAL;
-            }
+        // Black market tariff cannot be reduced by mayor discount
+        if (isBlackMarketTrade) {
+            totalRate += this.BLACK_MARKET_SURCHARGE;
+            appliedSurcharges.push("Cross-Faction Black Market Surcharge (+15%)");
         }
 
-        // Mayor discount applies ONLY to legitimate trade, never to illicit black market tariffs
-        if (params.isMayorGuildMember && !isBlackMarket) {
-            taxRate *= 0.50;
-        }
-
-        const totalTaxPaid = Math.max(1, Math.ceil(price * taxRate));
-        const netSeller = Math.max(0, price - totalTaxPaid);
-
-        const treasuryDeposit = Math.floor(totalTaxPaid * this.TREASURY_SHARE);
-        const goldSinkBurnt = totalTaxPaid - treasuryDeposit;
-
-        const effectivePercent = Math.round((totalTaxPaid / price) * 10000) / 100;
+        const taxGold = Math.max(1, Math.floor(basePrice * totalRate));
+        const netYield = Math.max(0, basePrice - taxGold);
 
         return {
-            listingPriceGold: price,
-            nominalTaxRatePercent: Math.round(taxRate * 10000) / 100,
-            effectiveTaxRatePercent: effectivePercent,
-            totalTaxPaidGold: totalTaxPaid,
-            netSellerProceedsGold: netSeller,
-            treasuryDepositGold: treasuryDeposit,
-            goldSinkBurntGold: goldSinkBurnt,
-            isBlackMarketTariff: isBlackMarket,
+            effectiveTaxRatePercent: Math.round(totalRate * 1000) / 10,
+            taxGoldAmount: taxGold,
+            sellerNetYieldGold: netYield,
+            appliedDiscounts,
+            appliedSurcharges,
         };
     }
 }

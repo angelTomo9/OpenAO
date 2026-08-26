@@ -1,48 +1,48 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, expect } from "vitest";
 import { MarketTaxPolicyEngine } from "../lib/marketTaxPolicy.js";
 
-describe("MarketTaxPolicyEngine Refined Bilateral Alignments", () => {
-    it("applies allied low tax rate when both buyer and seller are Royal citizens", () => {
-        const res = MarketTaxPolicyEngine.computeMarketTax({
-            listingPriceGold: 10000,
-            sellerAlignment: "ROYAL_CITIZEN",
-            buyerAlignment: "ROYAL_CITIZEN",
-            cityJurisdiction: "ROYAL_CAPITAL",
+describe("MarketTaxPolicyEngine Bilateral Tax Rates & Mayor Discounts", () => {
+    it("applies standard 5% tax for peaceful aligned citizens", () => {
+        const res = MarketTaxPolicyEngine.calculateTax({
+            cityAlignment: "ORDER_CITIZEN",
+            sellerAlignment: "ORDER_CITIZEN",
+            buyerAlignment: "ORDER_CITIZEN",
+            itemGoldPrice: 1000,
+            isSellerInMayorGuild: false,
         });
 
-        assert.equal(res.nominalTaxRatePercent, 3.0);
-        assert.equal(res.totalTaxPaidGold, 300);
-        assert.equal(res.netSellerProceedsGold, 9700);
-        assert.equal(res.treasuryDepositGold, 240);
-        assert.equal(res.goldSinkBurntGold, 60);
-        assert.equal(res.isBlackMarketTariff, false);
+        expect(res.effectiveTaxRatePercent).toBe(5.0);
+        expect(res.taxGoldAmount).toBe(50);
+        expect(res.sellerNetYieldGold).toBe(950);
+        expect(res.appliedDiscounts.length).toBe(0);
     });
 
-    it("triggers black market tariff if either seller or buyer is a Chaos Outlaw in Royal city", () => {
-        const res = MarketTaxPolicyEngine.computeMarketTax({
-            listingPriceGold: 10000,
-            sellerAlignment: "ROYAL_CITIZEN",
-            buyerAlignment: "CHAOS_OUTLAW",
-            cityJurisdiction: "ROYAL_CAPITAL",
+    it("applies 50% mayor guild discount reducing base tax to 2.5%", () => {
+        const res = MarketTaxPolicyEngine.calculateTax({
+            cityAlignment: "ORDER_CITIZEN",
+            sellerAlignment: "ORDER_CITIZEN",
+            buyerAlignment: "ORDER_CITIZEN",
+            itemGoldPrice: 1000,
+            isSellerInMayorGuild: true, // Mayor guild member
         });
 
-        assert.equal(res.nominalTaxRatePercent, 15.0);
-        assert.equal(res.totalTaxPaidGold, 1500);
-        assert.equal(res.isBlackMarketTariff, true);
+        expect(res.effectiveTaxRatePercent).toBe(2.5);
+        expect(res.taxGoldAmount).toBe(25);
+        expect(res.sellerNetYieldGold).toBe(975);
+        expect(res.appliedDiscounts).toContain("Mayor Guild 50% Base Tax Discount");
     });
 
-    it("does NOT allow mayor discount to reduce black market surcharges", () => {
-        const res = MarketTaxPolicyEngine.computeMarketTax({
-            listingPriceGold: 10000,
-            sellerAlignment: "CHAOS_OUTLAW",
-            buyerAlignment: "ROYAL_CITIZEN",
-            cityJurisdiction: "ROYAL_CAPITAL",
-            isMayorGuildMember: true, // Should not halve black market tariff
+    it("applies black market surcharge (+15%) for outlaw trades without mayor discount", () => {
+        const res = MarketTaxPolicyEngine.calculateTax({
+            cityAlignment: "ORDER_CITIZEN",
+            sellerAlignment: "CHAOS_OUTLAW", // Outlaw
+            buyerAlignment: "ORDER_CITIZEN",
+            itemGoldPrice: 1000,
+            isSellerInMayorGuild: true, // Mayor discount should NOT reduce black market surcharge
         });
 
-        assert.equal(res.nominalTaxRatePercent, 15.0);
-        assert.equal(res.totalTaxPaidGold, 1500);
-        assert.equal(res.isBlackMarketTariff, true);
+        expect(res.effectiveTaxRatePercent).toBe(20.0); // 5% base + 15% surcharge = 20%
+        expect(res.taxGoldAmount).toBe(200);
+        expect(res.appliedSurcharges.length).toBe(1);
     });
 });
