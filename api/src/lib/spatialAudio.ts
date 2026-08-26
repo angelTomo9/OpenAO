@@ -1,205 +1,113 @@
 /**
- * 2D Spatial Audio Attenuation & Stereo Panning Engine for OpenAO MMORPG.
- * Computes realistic distance falloff, directional cones, obstacle occlusion,
- * and equal-power stereo channel gain distribution.
+ * 2D Spatial Audio Engine & Distance Attenuation for OpenAO MMORPG.
+ * Simulates logarithmic/linear distance volume falloff, constant-power stereo panning (cos/sin),
+ * and dungeon wall obstruction attenuation.
  */
 
-export type DistanceModel = "inverse" | "linear" | "exponential";
+export type FalloffModel = "INVERSE_DISTANCE" | "LINEAR" | "EXPONENTIAL";
 
-export interface Position2D {
+export interface AudioListenerPosition {
     x: number;
     y: number;
+    facingAngleRad?: number;
 }
 
-export interface Orientation2D {
-    dirX: number;
-    dirY: number;
-}
-
-export interface SpatialAudioOptions {
-    refDistance?: number;
-    maxDistance?: number;
+export interface AudioEmitterPosition {
+    x: number;
+    y: number;
+    maxDistance: number;
+    minDistance?: number;
     rolloffFactor?: number;
-    distanceModel?: DistanceModel;
-    coneInnerAngle?: number; // degrees
-    coneOuterAngle?: number; // degrees
-    coneOuterGain?: number;
-    occlusionFactor?: number; // 0 (no occlusion) to 1 (full occlusion)
+    falloffModel?: FalloffModel;
+    isOccludedByWall?: boolean;
 }
 
-export interface SpatialGainResult {
-    volume: number;
-    leftGain: number;
-    rightGain: number;
+export interface SpatialAudioResult {
+    effectiveVolume: number; // 0.0 to 1.0
+    panLeft: number;        // 0.0 to 1.0
+    panRight: number;       // 0.0 to 1.0
     distance: number;
-    panning: number; // -1 (full left) to +1 (full right)
-    audible: boolean;
+    isAudible: boolean;
 }
 
 export class SpatialAudioEngine {
+    private static readonly OCCLUSION_ATTENUATION = 0.50; // -50% volume through walls
+
     /**
-     * Calculates Euclidean distance between source and listener.
+     * Calculates the Euclidean distance between listener and emitter.
      */
-    static getDistance(p1: Position2D, p2: Position2D): number {
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
+    public static calculateDistance(listener: AudioListenerPosition, emitter: AudioEmitterPosition): number {
+        const dx = emitter.x - listener.x;
+        const dy = emitter.y - listener.y;
         return Math.sqrt(dx * dx + dy * dy);
     }
 
     /**
-     * Computes distance attenuation gain according to the specified physical model.
+     * Calculates distance-based volume attenuation.
      */
-    static calculateDistanceGain(
-        distance: number,
-        refDist: number,
-        maxDist: number,
-        rolloff: number,
-        model: DistanceModel
-    ): number {
-        const clampedDist = Math.max(distance, refDist);
+    public static calculateAttenuation(distance: number, emitter: AudioEmitterPosition): number {
+        const minDistance = emitter.minDistance ?? 1;
+        const maxDistance = emitter.maxDistance;
+        const rolloff = emitter.rolloffFactor ?? 1.0;
+        const model = emitter.falloffModel ?? "INVERSE_DISTANCE";
 
-        if (distance >= maxDist) {
-            return 0;
-        }
+        if (distance <= minDistance) return 1.0;
+        if (distance >= maxDistance) return 0.0;
 
+        let volume = 0.0;
         switch (model) {
-            case "linear": {
-                const norm = (clampedDist - refDist) / (maxDist - refDist);
-                return Math.max(0, 1 - rolloff * norm);
-            }
-            case "exponential": {
-                if (refDist <= 0 || clampedDist <= 0) return 0;
-                return Math.pow(clampedDist / refDist, -rolloff);
-            }
-            case "inverse":
-            default: {
-                return refDist / (refDist + rolloff * (clampedDist - refDist));
-            }
+            case "LINEAR":
+                volume = 1.0 - (distance - minDistance) / (maxDistance - minDistance);
+                break;
+            case "EXPONENTIAL":
+                volume = Math.pow(Math.max(0, 1.0 - (distance - minDistance) / (maxDistance - minDistance)), rolloff * 2);
+                break;
+            case "INVERSE_DISTANCE":
+            default:
+                volume = minDistance / (minDistance + rolloff * (distance - minDistance));
+                break;
         }
+
+        const clamped = Math.min(1.0, Math.max(0.0, volume));
+        return emitter.isOccludedByWall ? clamped * this.OCCLUSION_ATTENUATION : clamped;
     }
 
     /**
-     * Computes directional cone attenuation multiplier.
+     * Computes constant-power stereo pan law (cos / sin) based on relative horizontal angle.
      */
-    static calculateConeGain(
-        sourcePos: Position2D,
-        sourceOrientation: Orientation2D,
-        listenerPos: Position2D,
-        innerAngle: number,
-        outerAngle: number,
-        outerGain: number
-    ): number {
-        const dx = listenerPos.x - sourcePos.x;
-        const dy = listenerPos.y - sourcePos.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+    public static calculateStereoPan(listener: AudioListenerPosition, emitter: AudioEmitterPosition): { left: number; right: number } {
+        const dx = emitter.x - listener.x;
+        const dy = emitter.y - listener.y;
 
-        if (dist === 0) return 1.0;
-
-        // Normalize source orientation
-        const len = Math.sqrt(
-            sourceOrientation.dirX * sourceOrientation.dirX +
-            sourceOrientation.dirY * sourceOrientation.dirY
-        );
-        if (len === 0) return 1.0;
-
-        const normDirX = sourceOrientation.dirX / len;
-        const normDirY = sourceOrientation.dirY / len;
-
-        const toListenerX = dx / dist;
-        const toListenerY = dy / dist;
-
-        // Dot product gives cosine of angle
-        const dot = Math.max(-1, Math.min(1, normDirX * toListenerX + normDirY * toListenerY));
-        const angleDeg = (Math.acos(dot) * 180) / Math.PI;
-
-        const halfInner = innerAngle / 2;
-        const halfOuter = outerAngle / 2;
-
-        if (angleDeg <= halfInner) {
-            return 1.0;
-        }
-        if (angleDeg >= halfOuter) {
-            return outerGain;
+        if (dx === 0 && dy === 0) {
+            return { left: Math.SQRT1_2, right: Math.SQRT1_2 };
         }
 
-        // Linear interpolation between inner and outer cone
-        const factor = (angleDeg - halfInner) / (halfOuter - halfInner);
-        return 1.0 - factor * (1.0 - outerGain);
+        const angle = Math.atan2(dx, dy); // -PI to PI
+        const normalizedAngle = (angle + Math.PI) / (2 * Math.PI); // 0.0 (Left) to 1.0 (Right)
+
+        // Constant power panning curve: cos(theta) and sin(theta)
+        const theta = normalizedAngle * (Math.PI / 2);
+        return {
+            left: Math.round(Math.cos(theta) * 1000) / 1000,
+            right: Math.round(Math.sin(theta) * 1000) / 1000,
+        };
     }
 
     /**
-     * Computes full spatial attenuation, stereo channel gains, and audibility status.
+     * Processes full 2D spatial acoustic rendering for an emitter relative to a listener.
      */
-    static computeSpatialGain(
-        sourcePos: Position2D,
-        listenerPos: Position2D,
-        listenerOrientation?: Orientation2D,
-        sourceOrientation?: Orientation2D,
-        options: SpatialAudioOptions = {}
-    ): SpatialGainResult {
-        const refDist = options.refDistance ?? 1.0;
-        const maxDist = options.maxDistance ?? 25.0;
-        const rolloff = options.rolloffFactor ?? 1.0;
-        const model = options.distanceModel ?? "inverse";
-        const occlusion = Math.max(0, Math.min(1, options.occlusionFactor ?? 0));
-
-        const dist = this.getDistance(sourcePos, listenerPos);
-
-        if (dist >= maxDist) {
-            return {
-                volume: 0,
-                leftGain: 0,
-                rightGain: 0,
-                distance: dist,
-                panning: 0,
-                audible: false,
-            };
-        }
-
-        // 1. Distance attenuation
-        let gain = this.calculateDistanceGain(dist, refDist, maxDist, rolloff, model);
-
-        // 2. Cone attenuation (if source has orientation)
-        if (sourceOrientation && options.coneInnerAngle && options.coneOuterAngle) {
-            const coneGain = this.calculateConeGain(
-                sourcePos,
-                sourceOrientation,
-                listenerPos,
-                options.coneInnerAngle,
-                options.coneOuterAngle,
-                options.coneOuterGain ?? 0.2
-            );
-            gain *= coneGain;
-        }
-
-        // 3. Wall/Obstacle occlusion
-        gain *= (1.0 - occlusion * 0.75);
-
-        // 4. Equal-power stereo panning
-        const dx = sourcePos.x - listenerPos.x;
-        const dy = sourcePos.y - listenerPos.y;
-
-        // Panning azimuth relative to listener orientation (default forward is (0, -1) North)
-        const lDirX = listenerOrientation?.dirX ?? 0;
-        const lDirY = listenerOrientation?.dirY ?? -1;
-
-        // Calculate angle between listener forward vector and source direction
-        const relX = dx; // Positive to right
-        const maxPanDist = Math.max(refDist, Math.min(dist, 10.0));
-        const pan = Math.max(-1.0, Math.min(1.0, relX / maxPanDist));
-
-        // Equal-power law: Left = cos((pan + 1) * pi / 4), Right = sin((pan + 1) * pi / 4)
-        const panAngle = ((pan + 1) * Math.PI) / 4;
-        const leftGain = gain * Math.cos(panAngle);
-        const rightGain = gain * Math.sin(panAngle);
+    public static renderAudio(listener: AudioListenerPosition, emitter: AudioEmitterPosition): SpatialAudioResult {
+        const distance = this.calculateDistance(listener, emitter);
+        const volume = this.calculateAttenuation(distance, emitter);
+        const pan = this.calculateStereoPan(listener, emitter);
 
         return {
-            volume: gain,
-            leftGain,
-            rightGain,
-            distance: dist,
-            panning: pan,
-            audible: gain > 0.001,
+            effectiveVolume: Math.round(volume * 1000) / 1000,
+            panLeft: Math.round(pan.left * volume * 1000) / 1000,
+            panRight: Math.round(pan.right * volume * 1000) / 1000,
+            distance: Math.round(distance * 100) / 100,
+            isAudible: volume > 0.001,
         };
     }
 }
