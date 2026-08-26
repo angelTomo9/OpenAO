@@ -1,93 +1,107 @@
 /**
- * Crowd Control Diminishing Returns (DR) & Immunity Engine for OpenAO MMORPG.
- * Simulates PvP diminishing returns windows (100% -> 50% -> 25% -> Immune) for STUN, ROOT, SILENCE, etc.
+ * Crowd Control (CC) Diminishing Returns & Stunlock Immunity Engine for OpenAO MMORPG.
+ * Simulates independent DR category tracking, duration decay (100% -> 50% -> 25% -> Immune),
+ * and natural 15-second decay timers without spam immunity extension.
  */
 
-export type CrowdControlCategory = "STUN" | "ROOT" | "SILENCE" | "DISARM" | "FEAR";
+export type CCCategory = "STUN" | "ROOT" | "SILENCE" | "DISARM" | "FEAR";
 
-export interface DiminishingReturnsRecord {
-    applicationCount: number;
-    lastApplicationEpochMs: number;
+export interface CCApplicationRecord {
+    targetId: string;
+    category: CCCategory;
+    applicationCount: number; // 0, 1, 2, 3+
     lastEndEpochMs: number;
 }
 
+export interface CCApplyResult {
+    effectiveDurationMs: number;
+    drTier: number; // 0 = 100%, 1 = 50%, 2 = 25%, 3 = Immune (0%)
+    isImmune: boolean;
+}
+
 export class DiminishingReturnsEngine {
-    private static readonly DR_WINDOW_MS = 15000; // 15 seconds reset window
+    public static readonly DR_RESET_WINDOW_MS = 15000; // 15 seconds after last CC ends
 
-    // Maps CharacterID -> Category -> DR Record
-    private drState: Map<string, Map<CrowdControlCategory, DiminishingReturnsRecord>> = new Map();
+    private records: Map<string, CCApplicationRecord> = new Map();
 
-    /**
-     * Retrieves the current tracking record, resetting it if the DR window has expired.
-     */
-    private getOrResetRecord(characterId: string, category: CrowdControlCategory, currentEpochMs: number): DiminishingReturnsRecord {
-        let charState = this.drState.get(characterId);
-        if (!charState) {
-            charState = new Map();
-            this.drState.set(characterId, charState);
-        }
-
-        let record = charState.get(category);
-        
-        // If no record exists OR the window has expired since the *end* of the last CC
-        if (!record || (currentEpochMs - record.lastEndEpochMs) > DiminishingReturnsEngine.DR_WINDOW_MS) {
-            record = {
-                applicationCount: 0,
-                lastApplicationEpochMs: 0,
-                lastEndEpochMs: 0,
-            };
-            charState.set(category, record);
-        }
-
-        return record;
+    private getKey(targetId: string, category: CCCategory): string {
+        return `${targetId}:${category}`;
     }
 
     /**
-     * Calculates the effective duration for a new CC application and updates the DR tracking state.
+     * Calculates the effective duration for an incoming crowd control effect.
      */
-    public applyCrowdControl(
-        characterId: string,
-        category: CrowdControlCategory,
+    public applyCC(
+        targetId: string,
+        category: CCCategory,
         baseDurationMs: number,
         currentEpochMs: number
-    ): { effectiveDurationMs: number; isImmune: boolean; drTier: number } {
-        const record = this.getOrResetRecord(characterId, category, currentEpochMs);
+    ): CCApplyResult {
+        const key = this.getKey(targetId, category);
+        let record = this.records.get(key);
 
-        let multiplier = 1.0;
-        let isImmune = false;
-        
-        const drTier = record.applicationCount;
-
-        if (drTier === 0) {
-            multiplier = 1.0; // 100%
-        } else if (drTier === 1) {
-            multiplier = 0.5; // 50%
-        } else if (drTier === 2) {
-            multiplier = 0.25; // 25%
-        } else {
-            multiplier = 0.0; // Immune
-            isImmune = true;
+        // Check if existing record has decayed past 15s reset window
+        if (record && currentEpochMs - record.lastEndEpochMs >= DiminishingReturnsEngine.DR_RESET_WINDOW_MS) {
+            record = undefined;
+            this.records.delete(key);
         }
 
-        const effectiveDurationMs = Math.floor(baseDurationMs * multiplier);
+        const count = record ? record.applicationCount : 0;
+        let multiplier = 1.0;
+        let tier = 0;
+        let isImmune = false;
 
-        // Update record tracking
-        record.applicationCount += 1;
-        record.lastApplicationEpochMs = currentEpochMs;
-        // The DR reset window starts after the CC effect *ends*
-        record.lastEndEpochMs = currentEpochMs + effectiveDurationMs;
+        switch (count) {
+            case 0:
+                multiplier = 1.0;
+                tier = 0;
+                break;
+            case 1:
+                multiplier = 0.50;
+                tier = 1;
+                break;
+            case 2:
+                multiplier = 0.25;
+                tier = 2;
+                break;
+            case 3:
+            default:
+                multiplier = 0.0;
+                tier = 3;
+                isImmune = true;
+                break;
+        }
+
+        const effectiveDuration = Math.floor(baseDurationMs * multiplier);
+
+        // Update record ONLY if not immune (immune re-applications do not push out reset window)
+        if (!isImmune) {
+            const nextEnd = currentEpochMs + effectiveDuration;
+            if (!record) {
+                record = {
+                    targetId,
+                    category,
+                    applicationCount: 1,
+                    lastEndEpochMs: nextEnd,
+                };
+                this.records.set(key, record);
+            } else {
+                record.applicationCount += 1;
+                record.lastEndEpochMs = nextEnd;
+            }
+        }
 
         return {
-            effectiveDurationMs,
+            effectiveDurationMs: effectiveDuration,
+            drTier: tier,
             isImmune,
-            drTier: drTier + 1, // Returning 1-indexed tier for reporting (1st, 2nd, 3rd, 4th+)
         };
     }
 
     /**
-     * Forcefully clears all DR history for a character (e.g. upon death or zoning).
+     * Clears all tracking records.
      */
-    public clearCharacterHistory(characterId: string): void {
-        this.drState.delete(characterId);
+    public clear(): void {
+        this.records.clear();
     }
 }

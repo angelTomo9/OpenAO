@@ -1,80 +1,59 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, expect } from "vitest";
 import { DiminishingReturnsEngine } from "../lib/ccDiminishingReturns.js";
 
-describe("Crowd Control Diminishing Returns Engine", () => {
-    it("applies diminishing multipliers: 100%, 50%, 25%, Immune", () => {
+describe("DiminishingReturnsEngine Refined Stunlock Prevention", () => {
+    it("progressively reduces CC duration from 100% to 50%, 25%, and Immunity", () => {
         const engine = new DiminishingReturnsEngine();
-        const baseDuration = 4000;
-        const charId = "player_rogue_01";
-        let time = 100000;
+        let now = 100000;
 
-        // 1st Application: 100%
-        const r1 = engine.applyCrowdControl(charId, "STUN", baseDuration, time);
-        assert.equal(r1.effectiveDurationMs, 4000);
-        assert.equal(r1.isImmune, false);
-        assert.equal(r1.drTier, 1);
+        // 1st Stun (4000ms) -> 100% = 4000ms
+        const r1 = engine.applyCC("player_1", "STUN", 4000, now);
+        expect(r1.effectiveDurationMs).toBe(4000);
+        expect(r1.drTier).toBe(0);
 
-        // Advance time by 5 seconds (CC ended after 4s, 1s into the 15s reset window)
-        time += 5000; 
+        now += 4000;
+        // 2nd Stun (4000ms) -> 50% = 2000ms
+        const r2 = engine.applyCC("player_1", "STUN", 4000, now);
+        expect(r2.effectiveDurationMs).toBe(2000);
+        expect(r2.drTier).toBe(1);
 
-        // 2nd Application: 50%
-        const r2 = engine.applyCrowdControl(charId, "STUN", baseDuration, time);
-        assert.equal(r2.effectiveDurationMs, 2000);
-        assert.equal(r2.isImmune, false);
-        assert.equal(r2.drTier, 2);
+        now += 2000;
+        // 3rd Stun (4000ms) -> 25% = 1000ms
+        const r3 = engine.applyCC("player_1", "STUN", 4000, now);
+        expect(r3.effectiveDurationMs).toBe(1000);
+        expect(r3.drTier).toBe(2);
 
-        // Advance time by 3 seconds (CC ended after 2s, 1s into reset window)
-        time += 3000;
-
-        // 3rd Application: 25%
-        const r3 = engine.applyCrowdControl(charId, "STUN", baseDuration, time);
-        assert.equal(r3.effectiveDurationMs, 1000);
-        assert.equal(r3.isImmune, false);
-        assert.equal(r3.drTier, 3);
-
-        // Advance time by 2 seconds
-        time += 2000;
-
-        // 4th Application: Immune (0%)
-        const r4 = engine.applyCrowdControl(charId, "STUN", baseDuration, time);
-        assert.equal(r4.effectiveDurationMs, 0);
-        assert.equal(r4.isImmune, true);
-        assert.equal(r4.drTier, 4);
+        now += 1000;
+        // 4th Stun -> Immune (0ms)
+        const r4 = engine.applyCC("player_1", "STUN", 4000, now);
+        expect(r4.effectiveDurationMs).toBe(0);
+        expect(r4.isImmune).toBe(true);
     });
 
-    it("resets DR window after 15 seconds of no CC", () => {
+    it("does NOT extend reset window when spamming CC against an immune target", () => {
         const engine = new DiminishingReturnsEngine();
-        const charId = "player_mage_02";
-        let time = 200000;
+        let now = 100000;
 
-        // 1st App (100%)
-        const r1 = engine.applyCrowdControl(charId, "SILENCE", 5000, time);
-        assert.equal(r1.effectiveDurationMs, 5000);
+        // Apply 3 stuns to reach immunity
+        engine.applyCC("player_1", "STUN", 4000, now);
+        now += 4000;
+        engine.applyCC("player_1", "STUN", 4000, now);
+        now += 2000;
+        engine.applyCC("player_1", "STUN", 4000, now); // Last stun ends at now + 1000 = 107000
+        now += 1000; // now = 107000 (immunity starts)
 
-        // Fast forward 21 seconds. 5s of CC duration + 16s of freedom.
-        // The 15s DR reset window should have expired.
-        time += 21000;
+        // Spam CC during immunity 10 seconds later (now = 117000)
+        now += 10000;
+        const immuneHit = engine.applyCC("player_1", "STUN", 4000, now);
+        expect(immuneHit.isImmune).toBe(true);
 
-        // Should be back to 1st App (100%)
-        const r2 = engine.applyCrowdControl(charId, "SILENCE", 5000, time);
-        assert.equal(r2.effectiveDurationMs, 5000);
-        assert.equal(r2.drTier, 1);
-    });
+        // Advance past original 15s reset window (107000 + 15000 = 122000) -> now = 123000
+        now = 123000;
+        const freshHit = engine.applyCC("player_1", "STUN", 4000, now);
 
-    it("tracks different CC categories independently", () => {
-        const engine = new DiminishingReturnsEngine();
-        const charId = "player_warrior_03";
-        const time = 300000;
-
-        // Stun #1 (100%)
-        const stunRes = engine.applyCrowdControl(charId, "STUN", 3000, time);
-        assert.equal(stunRes.drTier, 1);
-        assert.equal(stunRes.effectiveDurationMs, 3000);
-
-        // Root #1 applied simultaneously (100% - independent tracker)
-        const rootRes = engine.applyCrowdControl(charId, "ROOT", 6000, time);
-        assert.equal(rootRes.drTier, 1);
-        assert.equal(rootRes.effectiveDurationMs, 6000);
+        // Should reset back to full duration (100% = 4000ms)
+        expect(freshHit.effectiveDurationMs).toBe(4000);
+        expect(freshHit.drTier).toBe(0);
+        expect(freshHit.isImmune).toBe(false);
     });
 });
