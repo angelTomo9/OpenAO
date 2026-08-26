@@ -1,7 +1,7 @@
 /**
  * Branching Dialogue Tree Traversal Engine for OpenAO MMORPG.
- * Simulates conditional player choices, variable interpolation, in-game actions,
- * and safe terminal leaf node navigation.
+ * Simulates conditional player choices, atomic single-pass variable interpolation,
+ * in-game actions, and safe terminal leaf node navigation with eligibility filtering.
  */
 
 export interface DialogueChoice {
@@ -38,27 +38,6 @@ export interface PlayerDialogueContext {
 
 export class DialogueEngine {
     /**
-     * Safely retrieves the next node following a player choice without throwing on terminal leaf nodes.
-     */
-    public static getNextDialogueNode(
-        graph: DialogueTreeGraph,
-        currentNodeId: string,
-        choiceIndex: number
-    ): DialogueNode | undefined {
-        const currentNode = graph.nodes.get(currentNodeId);
-        if (!currentNode || !currentNode.choices || !Array.isArray(currentNode.choices)) {
-            return undefined; // Terminal node or node not found
-        }
-
-        const choice = currentNode.choices[choiceIndex];
-        if (!choice || !choice.nextNodeId) {
-            return undefined;
-        }
-
-        return graph.nodes.get(choice.nextNodeId);
-    }
-
-    /**
      * Filters available choices based on player stats and quest prerequisites.
      */
     public static getEligibleChoices(
@@ -84,13 +63,55 @@ export class DialogueEngine {
     }
 
     /**
-     * Interpolates dynamic player variables into dialogue text ({playerName}, {gold}, {karma}).
+     * Safely retrieves the next node following a player choice by choiceId or eligible index.
+     * Enforces prerequisite checks against player context if supplied.
+     */
+    public static getNextDialogueNode(
+        graph: DialogueTreeGraph,
+        currentNodeId: string,
+        choiceIdentifier: string | number,
+        player?: PlayerDialogueContext
+    ): DialogueNode | undefined {
+        const currentNode = graph.nodes.get(currentNodeId);
+        if (!currentNode || !currentNode.choices || !Array.isArray(currentNode.choices)) {
+            return undefined; // Terminal node or node not found
+        }
+
+        let choice: DialogueChoice | undefined;
+
+        if (typeof choiceIdentifier === "string") {
+            choice = currentNode.choices.find((c) => c.choiceId === choiceIdentifier);
+        } else {
+            // Index-based selection: if player context is provided, index into eligible choices
+            const choicesList = player ? this.getEligibleChoices(currentNode, player) : currentNode.choices;
+            choice = choicesList[choiceIdentifier];
+        }
+
+        if (!choice || !choice.nextNodeId) {
+            return undefined;
+        }
+
+        // Validate player eligibility if player context is provided
+        if (player) {
+            if (choice.minKarma !== undefined && player.karma < choice.minKarma) return undefined;
+            if (choice.minGold !== undefined && player.gold < choice.minGold) return undefined;
+            if (choice.requiredQuestId && !player.completedQuestIds.has(choice.requiredQuestId)) return undefined;
+        }
+
+        return graph.nodes.get(choice.nextNodeId);
+    }
+
+    /**
+     * Interpolates dynamic player variables atomically in a single pass to prevent nested placeholder injection.
      */
     public static interpolateText(rawText: string, player: PlayerDialogueContext): string {
-        return rawText
-            .replace(/\{playerName\}/g, player.playerName)
-            .replace(/\{gold\}/g, player.gold.toLocaleString())
-            .replace(/\{karma\}/g, player.karma.toString());
+        const values: Record<string, string> = {
+            playerName: player.playerName,
+            gold: player.gold.toString(),
+            karma: player.karma.toString(),
+        };
+
+        return rawText.replace(/\{(playerName|gold|karma)\}/g, (_match, key) => values[key] ?? "");
     }
 
     /**
