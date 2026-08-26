@@ -75,7 +75,8 @@ export class MercenaryContractEngine {
         playerId: string,
         mercenaryTemplateId: string,
         playerGold: number,
-        currentEpochMs: number
+        currentEpochMs: number,
+        randomSuffix: string = Math.random().toString(36).slice(2, 8)
     ): { success: boolean; contract?: ActiveMercenaryContract; remainingGold: number; reason?: string } {
         const def = MERCENARY_CATALOG[mercenaryTemplateId];
         if (!def) {
@@ -91,7 +92,7 @@ export class MercenaryContractEngine {
         }
 
         const contract: ActiveMercenaryContract = {
-            contractId: `merc_${playerId}_${Date.now()}`,
+            contractId: `merc_${playerId}_${mercenaryTemplateId}_${currentEpochMs}_${randomSuffix}`,
             playerId,
             mercenaryTemplateId,
             status: "ACTIVE",
@@ -128,7 +129,19 @@ export class MercenaryContractEngine {
         }
 
         const def = MERCENARY_CATALOG[contract.mercenaryTemplateId];
-        const wage = def ? def.wagePerTickGold : 25;
+        if (!def) {
+            return {
+                contractId: contract.contractId,
+                status: "DISCHARGED",
+                goldDeducted: 0,
+                remainingPlayerGold: playerGold,
+                loyaltyPercent: contract.loyaltyPercent,
+                hasDeserted: false,
+                reason: "Mercenary template no longer exists in catalog.",
+            };
+        }
+
+        const wage = def.wagePerTickGold;
 
         // Player pays wage successfully
         if (playerGold >= wage) {
@@ -159,7 +172,7 @@ export class MercenaryContractEngine {
                 status: "DESERTED",
                 goldDeducted: 0,
                 remainingPlayerGold: playerGold,
-                loyaltyPercent: 0,
+                loyaltyPercent: contract.loyaltyPercent,
                 hasDeserted: true,
                 reason: "Mercenary deserted the party due to unpaid wages.",
             };
