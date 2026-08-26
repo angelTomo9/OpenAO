@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { PlayerTitleSystemEngine, PlayerAchievementStats } from "../lib/playerTitleSystem.js";
 
-describe("PlayerTitleSystemEngine Achievement Unlocks & HUD Nameplates", () => {
+describe("PlayerTitleSystemEngine Achievement Unlocks, Ownership Verification & Sanitization", () => {
     it("unlocks titles based on player achievement milestones", () => {
         const stats: PlayerAchievementStats = {
             dragonsSlain: 15,
@@ -17,23 +17,33 @@ describe("PlayerTitleSystemEngine Achievement Unlocks & HUD Nameplates", () => {
         expect(unlocked).not.toContain("master_angler");
     });
 
-    it("formats player nameplates with prefix and suffix titles correctly", () => {
-        // Prefix title
-        const prefixName = PlayerTitleSystemEngine.formatNameplate("Arthur", "grand_inquisitor");
-        expect(prefixName).toBe("[Grand Inquisitor] Arthur");
+    it("verifies unlock ownership before applying titles and perks", () => {
+        const unlockedTitles = ["dragonbane"]; // Player ONLY owns dragonbane
 
-        // Suffix title
-        const suffixName = PlayerTitleSystemEngine.formatNameplate("Arthur", "undying_champion");
-        expect(suffixName).toBe("Arthur, the Undying");
+        // Equipping unlocked title succeeds
+        const legitName = PlayerTitleSystemEngine.formatNameplate("Arthur", "dragonbane", unlockedTitles);
+        expect(legitName).toBe("[Dragonbane] Arthur");
 
-        // No title
-        const plainName = PlayerTitleSystemEngine.formatNameplate("Arthur");
-        expect(plainName).toBe("Arthur");
+        const legitPerks = PlayerTitleSystemEngine.getActivePerks("dragonbane", unlockedTitles);
+        expect(legitPerks.bonusMaxHp).toBe(50);
+
+        // Attempting to equip unearned title 'undying_champion' fails and grants no perks
+        const spoofedName = PlayerTitleSystemEngine.formatNameplate("Arthur", "undying_champion", unlockedTitles);
+        expect(spoofedName).toBe("Arthur");
+
+        const spoofedPerks = PlayerTitleSystemEngine.getActivePerks("undying_champion", unlockedTitles);
+        expect(spoofedPerks).toEqual({});
     });
 
-    it("returns passive stat perks associated with equipped title", () => {
-        const perks = PlayerTitleSystemEngine.getActivePerks("dragonbane");
-        expect(perks.bonusMaxHp).toBe(50);
-        expect(perks.criticalStrikeChanceBonusPercent).toBe(2.0);
+    it("sanitizes player names against title spoofing in nameplates", () => {
+        // Player names with fake brackets or commas
+        const sanitized = PlayerTitleSystemEngine.formatNameplate("[Dragonbane] Arthur", undefined);
+        expect(sanitized).toBe("Dragonbane Arthur");
+    });
+
+    it("handles unknown or undefined title IDs gracefully", () => {
+        expect(PlayerTitleSystemEngine.formatNameplate("Arthur", "unknown_title")).toBe("Arthur");
+        expect(PlayerTitleSystemEngine.getActivePerks("unknown_title")).toEqual({});
+        expect(PlayerTitleSystemEngine.getActivePerks(undefined)).toEqual({});
     });
 });

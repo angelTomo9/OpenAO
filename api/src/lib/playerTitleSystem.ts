@@ -1,6 +1,7 @@
 /**
  * Player Title & Achievement Badge Engine for OpenAO MMORPG.
- * Tracks unlocked titles based on combat/skill achievements, applies equipped title passive perks,
+ * Tracks unlocked titles based on combat/skill achievements, validates title ownership
+ * before applying passive stat perks, sanitizes nameplates against spoofing,
  * and formats player nameplates for in-game chat and HUD rendering.
  */
 
@@ -68,6 +69,16 @@ export const TITLE_CATALOG: Record<string, PlayerTitleDefinition> = {
 
 export class PlayerTitleSystemEngine {
     /**
+     * Sanitizes raw player names, stripping spoofing delimiters like brackets and outer commas.
+     */
+    public static sanitizePlayerName(playerName: string): string {
+        return (playerName || "")
+            .replace(/[\[\]]/g, "") // Strip brackets
+            .replace(/^,+|,+$/g, "") // Strip leading/trailing commas
+            .trim();
+    }
+
+    /**
      * Evaluates player achievements and resolves the set of all unlocked title IDs.
      */
     public static resolveUnlockedTitles(stats: PlayerAchievementStats): string[] {
@@ -90,11 +101,24 @@ export class PlayerTitleSystemEngine {
     }
 
     /**
-     * Formats a character's display nameplate according to their currently active title.
+     * Formats a character's display nameplate according to their active title,
+     * strictly verifying that the player has unlocked the title and sanitizing inputs.
      */
-    public static formatNameplate(playerName: string, activeTitleId?: string): string {
-        const cleanName = playerName.trim();
+    public static formatNameplate(
+        playerName: string,
+        activeTitleId?: string,
+        unlockedTitleIds?: Set<string> | string[]
+    ): string {
+        const cleanName = this.sanitizePlayerName(playerName);
         if (!activeTitleId) return cleanName;
+
+        // Verify title unlock ownership if an unlocked set is provided
+        if (unlockedTitleIds) {
+            const unlockedSet = unlockedTitleIds instanceof Set ? unlockedTitleIds : new Set(unlockedTitleIds);
+            if (!unlockedSet.has(activeTitleId)) {
+                return cleanName;
+            }
+        }
 
         const title = TITLE_CATALOG[activeTitleId];
         if (!title) return cleanName;
@@ -107,10 +131,22 @@ export class PlayerTitleSystemEngine {
     }
 
     /**
-     * Computes the aggregated passive perks granted by the active title.
+     * Computes the aggregated passive perks granted by the active title,
+     * verifying ownership against unlocked titles.
      */
-    public static getActivePerks(activeTitleId?: string): TitlePassivePerks {
+    public static getActivePerks(
+        activeTitleId?: string,
+        unlockedTitleIds?: Set<string> | string[]
+    ): TitlePassivePerks {
         if (!activeTitleId) return {};
+
+        if (unlockedTitleIds) {
+            const unlockedSet = unlockedTitleIds instanceof Set ? unlockedTitleIds : new Set(unlockedTitleIds);
+            if (!unlockedSet.has(activeTitleId)) {
+                return {};
+            }
+        }
+
         const title = TITLE_CATALOG[activeTitleId];
         return title ? { ...title.perks } : {};
     }
