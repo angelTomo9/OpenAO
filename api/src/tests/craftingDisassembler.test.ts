@@ -7,7 +7,7 @@ describe("CraftingDisassemblerEngine Salvage Recovery & Critical Yields", () => 
             itemTemplateId: "iron_plate_armor",
             currentDurability: 100,
             maxDurability: 100,
-            playerBlacksmithSkill: 80, // High skill (skill efficiency = 0.40 + 0.36 = 76%)
+            playerBlacksmithSkill: 80,
         };
 
         const res = CraftingDisassemblerEngine.disassembleItem(params, () => 0.99); // No critical
@@ -15,7 +15,6 @@ describe("CraftingDisassemblerEngine Salvage Recovery & Critical Yields", () => 
         expect(res.salvageEfficiencyPercent).toBe(76);
         expect(res.wasCriticalSalvage).toBe(false);
 
-        // 12 base * 76% = 9 iron ingots
         const iron = res.yields.find(y => y.material === "IRON_INGOT");
         expect(iron?.quantity).toBe(9);
     });
@@ -48,5 +47,33 @@ describe("CraftingDisassemblerEngine Salvage Recovery & Critical Yields", () => 
         const res = CraftingDisassemblerEngine.disassembleItem(params);
         expect(res.success).toBe(false);
         expect(res.reason).toContain("Insufficient skill level");
+    });
+
+    it("rejects salvage for unknown item templates without a recipe", () => {
+        const params: DisassembleItemParams = {
+            itemTemplateId: "non_existent_item",
+            currentDurability: 10,
+            maxDurability: 10,
+            playerBlacksmithSkill: 100,
+        };
+
+        const res = CraftingDisassemblerEngine.disassembleItem(params);
+        expect(res.success).toBe(false);
+        expect(res.reason).toContain("has no salvage recipe");
+    });
+
+    it("applies broken item durability penalties and respects efficiency floor", () => {
+        const brokenParams: DisassembleItemParams = {
+            itemTemplateId: "iron_plate_armor",
+            currentDurability: 0,
+            maxDurability: 100,
+            playerBlacksmithSkill: 10, // 0.40 * 0.25 = 0.10 floor
+            isBroken: true,
+        };
+
+        const res = CraftingDisassemblerEngine.disassembleItem(brokenParams, () => 0.99);
+        expect(res.success).toBe(true);
+        expect(res.salvageEfficiencyPercent).toBe(11);
+        expect(res.yields.length).toBeGreaterThan(0);
     });
 });

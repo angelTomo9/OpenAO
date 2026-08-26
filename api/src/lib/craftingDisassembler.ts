@@ -125,13 +125,19 @@ export class CraftingDisassemblerEngine {
             });
         }
 
-        // Add bonus material on critical salvage roll
+        // Add bonus material on critical salvage roll, merging if material already present
         if (wasCriticalSalvage && recipe.criticalBonusMaterial) {
-            yields.push({
-                material: recipe.criticalBonusMaterial,
-                quantity: 1,
-                isCriticalBonus: true,
-            });
+            const existing = yields.find(y => y.material === recipe.criticalBonusMaterial);
+            if (existing) {
+                existing.quantity += 1;
+                existing.isCriticalBonus = true;
+            } else {
+                yields.push({
+                    material: recipe.criticalBonusMaterial,
+                    quantity: 1,
+                    isCriticalBonus: true,
+                });
+            }
         }
 
         return {
