@@ -18,7 +18,19 @@ export class AmmLiquidityPoolEngine {
     /**
      * Initializes a new AMM pool and sets the constant product K.
      */
-    public static initializePool(poolId: string, materialId: string, initialMaterial: number, initialGold: number): LiquidityPool {
+    public static initializePool(
+        poolId: string,
+        materialId: string,
+        initialMaterial: number,
+        initialGold: number
+    ): LiquidityPool {
+        if (!Number.isInteger(initialMaterial) || initialMaterial <= 0) {
+            throw new Error("Initial material reserve must be a positive integer");
+        }
+        if (!Number.isInteger(initialGold) || initialGold <= 0) {
+            throw new Error("Initial gold reserve must be a positive integer");
+        }
+
         return {
             poolId,
             materialId,
@@ -32,21 +44,22 @@ export class AmmLiquidityPoolEngine {
      * Estimates how much Gold a player must pay to receive exactly `amountOut` of Material.
      */
     public static getBuyQuote(pool: LiquidityPool, materialAmountOut: number): number {
-        if (materialAmountOut >= pool.reserveMaterial || materialAmountOut <= 0) {
-            throw new Error("Insufficient liquidity for this trade size");
+        if (!Number.isInteger(materialAmountOut) || materialAmountOut <= 0) {
+            throw new Error("Buy quantity must be a positive integer");
+        }
+        if (materialAmountOut >= pool.reserveMaterial) {
+            throw new Error("Insufficient material liquidity in pool");
         }
 
         // x * y = k
         // (x - dx) * (y + dy) = k
-        // y + dy = k / (x - dx)
         // dy = (k / (x - dx)) - y
         const newMaterialReserve = pool.reserveMaterial - materialAmountOut;
         const newGoldReserve = pool.k / newMaterialReserve;
-        const goldRequired = newGoldReserve - pool.reserveGold;
+        const rawGoldRequired = newGoldReserve - pool.reserveGold;
 
-        // Apply 1% fee on the input
-        const goldRequiredWithFee = goldRequired / (1.0 - this.LP_FEE_PERCENT);
-        
+        // Apply 1% fee on input gold
+        const goldRequiredWithFee = rawGoldRequired / (1.0 - this.LP_FEE_PERCENT);
         return Math.ceil(goldRequiredWithFee);
     }
 
@@ -56,11 +69,8 @@ export class AmmLiquidityPoolEngine {
     public static executeBuy(pool: LiquidityPool, materialAmountOut: number): { goldPaid: number } {
         const goldPaid = this.getBuyQuote(pool, materialAmountOut);
 
-        // Update reserves
         pool.reserveMaterial -= materialAmountOut;
         pool.reserveGold += goldPaid;
-        
-        // K increases slightly due to the fee being retained in the pool
         pool.k = pool.reserveMaterial * pool.reserveGold;
 
         return { goldPaid };
@@ -70,36 +80,37 @@ export class AmmLiquidityPoolEngine {
      * Estimates how much Gold a player will receive by selling exactly `amountIn` of Material.
      */
     public static getSellQuote(pool: LiquidityPool, materialAmountIn: number): number {
-        if (materialAmountIn <= 0) return 0;
+        if (!Number.isInteger(materialAmountIn) || materialAmountIn <= 0) {
+            return 0;
+        }
 
-        // Apply 1% fee on the input material before calculating
+        // Apply 1% fee on the input material before calculating gold output
         const effectiveMaterialIn = materialAmountIn * (1.0 - this.LP_FEE_PERCENT);
 
         // (x + dx) * (y - dy) = k
-        // y - dy = k / (x + dx)
         // dy = y - (k / (x + dx))
         const newMaterialReserve = pool.reserveMaterial + effectiveMaterialIn;
         const newGoldReserve = pool.k / newMaterialReserve;
-        const goldYield = pool.reserveGold - newGoldReserve;
+        const goldYield = Math.floor(pool.reserveGold - newGoldReserve);
 
-        if (goldYield >= pool.reserveGold) {
-            throw new Error("Insufficient gold liquidity");
-        }
-
-        return Math.floor(goldYield);
+        return Math.max(0, goldYield);
     }
 
     /**
      * Executes a player SELL order (Player gives Material, receives Gold).
      */
     public static executeSell(pool: LiquidityPool, materialAmountIn: number): { goldReceived: number } {
-        const goldReceived = this.getSellQuote(pool, materialAmountIn);
+        if (!Number.isInteger(materialAmountIn) || materialAmountIn <= 0) {
+            throw new Error("Sell quantity must be a positive integer");
+        }
 
-        // Update reserves
+        const goldReceived = this.getSellQuote(pool, materialAmountIn);
+        if (goldReceived <= 0) {
+            throw new Error("Trade size too small to yield gold output");
+        }
+
         pool.reserveMaterial += materialAmountIn;
         pool.reserveGold -= goldReceived;
-
-        // K increases slightly due to the fee
         pool.k = pool.reserveMaterial * pool.reserveGold;
 
         return { goldReceived };
