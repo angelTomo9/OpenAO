@@ -1,7 +1,7 @@
 /**
  * 2D Positional Combat & Backstab / Flanking Angle Engine for OpenAO MMORPG.
  * Simulates directional attack cones, backstab/flanking critical modifiers,
- * and frontal shield block mechanics with zero-distance safety.
+ * and frontal shield block mechanics with comprehensive angle normalization.
  */
 
 export type CombatRelativeAngle = "BACKSTAB" | "FLANK" | "FRONTAL";
@@ -9,7 +9,7 @@ export type CombatRelativeAngle = "BACKSTAB" | "FLANK" | "FRONTAL";
 export interface CombatEntityPosition {
     x: number;
     y: number;
-    facingAngleRad: number; // 0 to 2*PI radians (0 = East, PI/2 = North, PI = West, 3*PI/2 = South)
+    facingAngleRad: number; // In radians
 }
 
 export interface PositionalDamageModifiers {
@@ -20,6 +20,15 @@ export interface PositionalDamageModifiers {
 }
 
 export class CombatPositioningEngine {
+    /**
+     * Normalizes an angle in radians into the [0, 2*PI) range.
+     */
+    public static normalizeAngle(rad: number): number {
+        let angle = rad % (2 * Math.PI);
+        if (angle < 0) angle += 2 * Math.PI;
+        return angle;
+    }
+
     /**
      * Resolves the relative positional sector of an attacker with respect to the defender's orientation.
      * Backstab sector: Rear 90-degree cone (angleDiff >= 135 deg).
@@ -38,13 +47,15 @@ export class CombatPositioningEngine {
             return "FRONTAL";
         }
 
-        // Angle of line from defender to attacker
-        let attackAngle = Math.atan2(dy, dx);
-        if (attackAngle < 0) attackAngle += 2 * Math.PI;
+        // Angle of vector from defender to attacker
+        const attackAngle = this.normalizeAngle(Math.atan2(dy, dx));
+        const defenderFacing = this.normalizeAngle(defender.facingAngleRad);
 
-        // Difference between attacker's position vector and defender's facing direction
-        let diff = Math.abs(attackAngle - defender.facingAngleRad);
-        if (diff > Math.PI) diff = 2 * Math.PI - diff;
+        // Difference between attack vector and defender facing direction
+        let diff = Math.abs(attackAngle - defenderFacing);
+        if (diff > Math.PI) {
+            diff = 2 * Math.PI - diff;
+        }
 
         const diffDeg = (diff * 180) / Math.PI;
 
