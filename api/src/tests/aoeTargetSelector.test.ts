@@ -1,65 +1,50 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { AoETargetSelector, TargetEntity, AoEShapeDefinition } from "../lib/aoeTargetSelector.js";
+import { describe, it, expect } from "vitest";
+import { AoETargetSelector, TargetEntity } from "../lib/aoeTargetSelector.js";
 
-describe("AoETargetSelector Spatial Boundaries", () => {
-    const origin = { x: 10, y: 10 };
-    const entities: TargetEntity[] = [
-        { id: "caster", x: 10, y: 10, teamId: 1, isAlive: true },
-        { id: "enemy_near", x: 12, y: 10, teamId: 2, isAlive: true }, // Dist 2
-        { id: "enemy_far", x: 20, y: 10, teamId: 2, isAlive: true }, // Dist 10
-        { id: "friendly", x: 10, y: 12, teamId: 1, isAlive: true }, // Dist 2
-        { id: "dead_enemy", x: 11, y: 10, teamId: 2, isAlive: false },
+describe("AoETargetSelector Geometry and Line of Sight", () => {
+    const mockEntities: TargetEntity[] = [
+        { entityId: "m1", x: 0, y: 3, isAlive: true },   // In front (North)
+        { entityId: "m2", x: 3, y: 0, isAlive: true },   // Right (East)
+        { entityId: "m3", x: 0, y: -3, isAlive: true },  // Behind (South)
+        { entityId: "m4", x: 0, y: 15, isAlive: true },  // Far North
+        { entityId: "dead_1", x: 0, y: 2, isAlive: false }, // Dead
     ];
 
-    it("selects circular AoE hostile targets filtering dead and friendly entities", () => {
-        const circleShape: AoEShapeDefinition = { shape: "CIRCLE", origin, radius: 5.0 };
-        const selected = AoETargetSelector.selectTargets(entities, {
-            shape: circleShape,
-            casterId: "caster",
-            casterTeamId: 1,
-            filter: "HOSTILE_ONLY",
+    it("selects entities inside circular radius and ignores dead entities", () => {
+        const targets = AoETargetSelector.selectTargets(mockEntities, {
+            shapeType: "CIRCLE",
+            origin: { x: 0, y: 0 },
+            radius: 5,
         });
 
-        assert.equal(selected.length, 1);
-        assert.equal(selected[0].id, "enemy_near");
+        expect(targets.length).toBe(3); // m1, m2, m3
+        expect(targets.some(t => t.entityId === "dead_1")).toBe(false);
     });
 
-    it("evaluates ring/donut AoE excluding co-located enemies", () => {
-        const ringShape: AoEShapeDefinition = {
-            shape: "RING_DONUT",
-            origin,
-            radius: 12.0,
-            innerRadius: 5.0,
-        };
-        const selected = AoETargetSelector.selectTargets(entities, {
-            shape: ringShape,
-            casterId: "caster",
-            casterTeamId: 1,
-            filter: "HOSTILE_ONLY",
+    it("selects entities inside directional cone facing North", () => {
+        // Facing angle PI/2 = North (dx=0, dy>0)
+        const targets = AoETargetSelector.selectTargets(mockEntities, {
+            shapeType: "CONE_SECTOR",
+            origin: { x: 0, y: 0 },
+            radius: 6,
+            facingAngleRad: Math.PI / 2, // North
+            coneSpreadAngleRad: Math.PI / 2, // 90 degrees
         });
 
-        // Only enemy_far (dist 10) is within [5, 12]
-        assert.equal(selected.length, 1);
-        assert.equal(selected[0].id, "enemy_far");
+        expect(targets.length).toBe(1);
+        expect(targets[0].entityId).toBe("m1");
     });
 
-    it("blocks targets behind solid collision walls using line-of-sight raycasting", () => {
-        const circleShape: AoEShapeDefinition = { shape: "CIRCLE", origin, radius: 5.0 };
+    it("blocks targets behind solid obstruction walls", () => {
+        const blockedTiles = new Set(["0,2"]); // Wall between (0,0) and (0,3)
+        const targets = AoETargetSelector.selectTargets(
+            mockEntities,
+            { shapeType: "CIRCLE", origin: { x: 0, y: 0 }, radius: 5 },
+            blockedTiles
+        );
 
-        // Place a wall at (11, 10) between caster (10,10) and enemy_near (12,10)
-        const wallGrid: boolean[][] = Array.from({ length: 25 }, () => Array(25).fill(false));
-        wallGrid[10][11] = true;
-
-        const selected = AoETargetSelector.selectTargets(entities, {
-            shape: circleShape,
-            casterId: "caster",
-            casterTeamId: 1,
-            filter: "HOSTILE_ONLY",
-            wallCollisionMap: wallGrid,
-        });
-
-        // Blocked by wall!
-        assert.equal(selected.length, 0);
+        // m1 at (0,3) is blocked by wall at (0,2); m2 and m3 are clear
+        expect(targets.length).toBe(2);
+        expect(targets.some(t => t.entityId === "m1")).toBe(false);
     });
 });
