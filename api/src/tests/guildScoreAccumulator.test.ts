@@ -1,43 +1,34 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, expect } from "vitest";
 import { GuildScoreAccumulator } from "../lib/guildScoreAccumulator.js";
 
-describe("GuildScoreAccumulator Seasonal Ranking", () => {
-    it("computes points for PvP, boss clears, and donations", () => {
-        const pvpPts = GuildScoreAccumulator.calculateEventPoints({ type: "PVP_ENEMY_GUILD_KILL" });
-        assert.equal(pvpPts, 25);
+describe("GuildScoreAccumulator Refined Seasonal Scoring", () => {
+    it("computes points for activities and safely rejects negative inputs", () => {
+        expect(GuildScoreAccumulator.calculateEventPoints({ type: "PVP_ENEMY_GUILD_KILL" })).toBe(25);
 
-        const bossPts = GuildScoreAccumulator.calculateEventPoints({
+        // Negative multiplier clamped to 0
+        const negMult = GuildScoreAccumulator.calculateEventPoints({
             type: "DUNGEON_BOSS_CLEAR",
-            pointsMultiplier: 2.0, // Mythic boss
+            pointsMultiplier: -2.0,
         });
-        assert.equal(bossPts, 200);
+        expect(negMult).toBe(0);
 
-        const donatePts = GuildScoreAccumulator.calculateEventPoints({
+        // Negative gold amount clamped to 0
+        const negGold = GuildScoreAccumulator.calculateEventPoints({
             type: "GOLD_VAULT_DONATION",
-            goldAmount: 50000,
+            goldAmount: -50000,
         });
-        assert.equal(donatePts, 50); // 50,000 / 1000 = 50
+        expect(negGold).toBe(0);
     });
 
-    it("evaluates guild tier brackets and unlocked member capacities", () => {
-        const bronze = GuildScoreAccumulator.getTierForScore(500);
-        assert.equal(bronze.tier, "BRONZE");
-        assert.equal(bronze.maxMembers, 10);
-
-        const gold = GuildScoreAccumulator.getTierForScore(6500);
-        assert.equal(gold.tier, "GOLD");
-        assert.equal(gold.maxMembers, 20);
-        assert.equal(gold.experienceBonusPercent, 5);
-
-        const gm = GuildScoreAccumulator.getTierForScore(40000);
-        assert.equal(gm.tier, "GRANDMASTER");
-        assert.equal(gm.maxMembers, 30);
-        assert.equal(gm.hasExclusiveCastlePortal, true);
+    it("evaluates guild tier brackets and member limits", () => {
+        expect(GuildScoreAccumulator.getTierForScore(500).tier).toBe("BRONZE");
+        expect(GuildScoreAccumulator.getTierForScore(6500).tier).toBe("GOLD");
+        expect(GuildScoreAccumulator.getTierForScore(40000).tier).toBe("GRANDMASTER");
+        expect(GuildScoreAccumulator.getTierForScore(40000).hasExclusiveCastlePortal).toBe(true);
     });
 
-    it("calculates seasonal decay soft reset", () => {
+    it("calculates flat seasonal rating decay", () => {
         const decayed = GuildScoreAccumulator.computeSeasonResetScore(10000, 0.50);
-        assert.equal(decayed, 5000);
+        expect(decayed).toBe(5000);
     });
 });

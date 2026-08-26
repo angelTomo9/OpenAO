@@ -1,7 +1,7 @@
 /**
  * Seasonal Guild Score & Tier Ranking Engine for OpenAO MMORPG.
  * Accumulates PvP kills, boss clears, territory control, and gold donations,
- * calculating tier brackets and end-of-season rating decays.
+ * calculating tier brackets and end-of-season rating decays with strict input validation.
  */
 
 export type GuildRankingTier = "BRONZE" | "SILVER" | "GOLD" | "DIAMOND" | "GRANDMASTER";
@@ -51,8 +51,11 @@ export const TIER_CONFIGS: Record<GuildRankingTier, { minScore: number; benefits
 };
 
 export class GuildScoreAccumulator {
+    /**
+     * Calculates score points awarded for a guild activity event with negative-input guards.
+     */
     public static calculateEventPoints(event: GuildScoreEvent): number {
-        const mult = event.pointsMultiplier ?? 1.0;
+        const mult = Math.max(0, event.pointsMultiplier ?? 1.0);
 
         switch (event.type) {
             case "PVP_KILL":
@@ -64,22 +67,29 @@ export class GuildScoreAccumulator {
             case "TERRITORY_CASTLE_TICK":
                 return Math.round(5 * mult);
             case "GOLD_VAULT_DONATION": {
-                const gold = event.goldAmount ?? 0;
+                const gold = Math.max(0, event.goldAmount ?? 0);
                 return Math.floor((gold / 1000) * mult);
             }
+            default:
+                return 0;
         }
     }
 
     public static getTierForScore(score: number): GuildTierBenefits {
-        if (score >= TIER_CONFIGS.GRANDMASTER.minScore) return TIER_CONFIGS.GRANDMASTER.benefits;
-        if (score >= TIER_CONFIGS.DIAMOND.minScore) return TIER_CONFIGS.DIAMOND.benefits;
-        if (score >= TIER_CONFIGS.GOLD.minScore) return TIER_CONFIGS.GOLD.benefits;
-        if (score >= TIER_CONFIGS.SILVER.minScore) return TIER_CONFIGS.SILVER.benefits;
+        const safeScore = Math.max(0, score);
+        if (safeScore >= TIER_CONFIGS.GRANDMASTER.minScore) return TIER_CONFIGS.GRANDMASTER.benefits;
+        if (safeScore >= TIER_CONFIGS.DIAMOND.minScore) return TIER_CONFIGS.DIAMOND.benefits;
+        if (safeScore >= TIER_CONFIGS.GOLD.minScore) return TIER_CONFIGS.GOLD.benefits;
+        if (safeScore >= TIER_CONFIGS.SILVER.minScore) return TIER_CONFIGS.SILVER.benefits;
         return TIER_CONFIGS.BRONZE.benefits;
     }
 
+    /**
+     * Computes the flat percentage rating carryover into the next season.
+     */
     public static computeSeasonResetScore(currentScore: number, decayFraction = 0.50): number {
-        // Retains 50% of earned score above Bronze floor into next season
-        return Math.max(0, Math.floor(currentScore * (1.0 - decayFraction)));
+        const safeScore = Math.max(0, currentScore);
+        const clampedDecay = Math.min(1.0, Math.max(0.0, decayFraction));
+        return Math.floor(safeScore * (1.0 - clampedDecay));
     }
 }
