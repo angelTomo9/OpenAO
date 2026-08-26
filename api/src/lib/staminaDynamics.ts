@@ -1,113 +1,90 @@
 /**
- * Character Stamina & Metabolism Dynamics Engine for OpenAO MMORPG.
- * Simulates activity costs, constitution scaling, weight encumbrance penalties,
- * resting/meditating recovery, and exhaustion debuffs.
+ * Metabolic Stamina & Exhaustion Dynamics Engine for OpenAO MMORPG.
+ * Simulates activity costs (sprinting, swinging, dodging), carrying weight overburden penalties,
+ * and recovery cooldown thresholds upon reaching zero stamina.
  */
 
-export type CharacterActivity =
-    | "MEDITATING"
-    | "RESTING_SITTING"
-    | "STANDING_IDLE"
-    | "WALKING"
-    | "RUNNING_SPRINTING"
-    | "COMBAT_ACTION"
-    | "SWIMMING";
+export type CharacterActionState = "IDLE" | "WALKING" | "SPRINTING" | "ATTACKING" | "RESTING" | "MEDITATING";
 
-export interface StaminaParameters {
+export interface StaminaCharacterState {
     currentStamina: number;
     maxStamina: number;
-    constitution: number; // 1 to 30
-    currentWeight: number;
-    maxWeightCapacity: number;
-    isExhausted: boolean;
-}
-
-export interface StaminaTickResult {
-    newStamina: number;
-    delta: number;
-    isExhausted: boolean;
-    canSprint: boolean;
-    speedMultiplier: number;
+    inventoryWeightKg: number;
+    carryingCapacityKg: number;
+    actionState: CharacterActionState;
+    isExhausted: boolean; // True if stamina reached 0, remains true until 20% recovered
 }
 
 export class StaminaDynamicsEngine {
-    public static calculateMaxStamina(constitution: number, level = 1): number {
-        // Base stamina formula: 50 + (constitution * 4) + (level * 2)
-        return Math.floor(50 + constitution * 4 + level * 2);
+    private static readonly EXHAUSTION_RECOVERY_THRESHOLD_PERCENT = 0.20; // Must recover 20% before leaving exhaustion
+
+    /**
+     * Calculates the encumbrance weight penalty multiplier.
+     */
+    public static calculateWeightPenalty(inventoryWeight: number, capacity: number): number {
+        if (capacity <= 0) return 3.0;
+        const ratio = inventoryWeight / capacity;
+        if (ratio <= 1.0) return 1.0;
+        // Quadratic penalty above capacity
+        return Math.min(3.0, 1.0 + Math.pow(ratio - 1.0, 2) * 2.0);
     }
 
-    public static calculateEncumbranceMultiplier(currentWeight: number, maxWeight: number): number {
-        if (maxWeight <= 0) return 1.0;
-        const ratio = currentWeight / maxWeight;
+    /**
+     * Calculates net stamina rate per tick (+ for regen, - for drain).
+     */
+    public static getStaminaRatePerTick(state: StaminaCharacterState): number {
+        const weightPenalty = this.calculateWeightPenalty(state.inventoryWeightKg, state.carryingCapacityKg);
 
-        if (ratio <= 0.75) {
-            return 1.0; // Normal load
-        }
-        if (ratio <= 1.0) {
-            // Slight encumbrance (1.0 to 1.5x depletion)
-            return 1.0 + (ratio - 0.75) * 2.0;
-        }
-
-        // Heavy encumbrance (> 100% capacity)
-        return 1.5 + (ratio - 1.0) * 4.0;
-    }
-
-    public static tickStamina(
-        params: StaminaParameters,
-        activity: CharacterActivity,
-        elapsedSeconds = 1.0
-    ): StaminaTickResult {
-        const encumbrance = this.calculateEncumbranceMultiplier(
-            params.currentWeight,
-            params.maxWeightCapacity
-        );
-
-        let baseRatePerSec = 0; // Positive = recovery, Negative = depletion
-
-        switch (activity) {
+        switch (state.actionState) {
+            case "SPRINTING":
+                return -3.0 * weightPenalty;
+            case "ATTACKING":
+                return -5.0 * weightPenalty;
+            case "RESTING":
+                return 2.5; // Sitting down speeds up recovery
             case "MEDITATING":
-                baseRatePerSec = 8.0 + params.constitution * 0.3;
-                break;
-            case "RESTING_SITTING":
-                baseRatePerSec = 5.0 + params.constitution * 0.2;
-                break;
-            case "STANDING_IDLE":
-                baseRatePerSec = 2.0 + params.constitution * 0.1;
-                break;
+                return 4.0; // Deep meditation grants rapid recovery
             case "WALKING":
-                baseRatePerSec = 0.5; // Slow recovery
-                break;
-            case "RUNNING_SPRINTING":
-                baseRatePerSec = -4.5 * encumbrance;
-                break;
-            case "COMBAT_ACTION":
-                baseRatePerSec = -3.0 * encumbrance;
-                break;
-            case "SWIMMING":
-                baseRatePerSec = -5.0 * encumbrance;
-                break;
+                return 0.5; // Slight passive regen while walking
+            case "IDLE":
+            default:
+                return 1.0; // Baseline passive recovery
         }
+    }
 
-        let delta = baseRatePerSec * elapsedSeconds;
-        let newStamina = Math.max(0, Math.min(params.maxStamina, params.currentStamina + delta));
+    /**
+     * Processes server tick updates for stamina state.
+     */
+    public static tickStamina(state: StaminaCharacterState, elapsedTicks = 1): void {
+        const safeTicks = Math.max(0, elapsedTicks);
+        const rate = this.getStaminaRatePerTick(state);
 
-        let isExhausted = params.isExhausted;
-        if (newStamina <= 0) {
-            isExhausted = true;
-        } else if (isExhausted && newStamina >= params.maxStamina * 0.2) {
-            // Recovered from exhaustion after 20% stamina
-            isExhausted = false;
+        state.currentStamina += rate * safeTicks;
+
+        if (state.currentStamina <= 0) {
+            state.currentStamina = 0;
+            state.isExhausted = true;
+            // Force character out of sprinting/attacking when exhausted
+            if (state.actionState === "SPRINTING" || state.actionState === "ATTACKING") {
+                state.actionState = "WALKING";
+            }
+        } else if (state.currentStamina >= state.maxStamina) {
+            state.currentStamina = state.maxStamina;
+            state.isExhausted = false;
+        } else if (state.isExhausted) {
+            // Check if recovered past threshold
+            const recoveryPercent = state.currentStamina / state.maxStamina;
+            if (recoveryPercent >= this.EXHAUSTION_RECOVERY_THRESHOLD_PERCENT) {
+                state.isExhausted = false;
+            }
         }
+    }
 
-        const canSprint = !isExhausted && newStamina > 5;
-        const speedMultiplier = isExhausted ? 0.6 : 1.0;
-
-        return {
-            newStamina: Math.round(newStamina * 100) / 100,
-            delta: Math.round(delta * 100) / 100,
-            isExhausted,
-            canSprint,
-            speedMultiplier,
-        };
+    /**
+     * Checks if a character is permitted to perform a high-stamina action.
+     */
+    public static canPerformAction(state: StaminaCharacterState, requiredStamina: number): boolean {
+        if (state.isExhausted) return false;
+        return state.currentStamina >= requiredStamina;
     }
 }
