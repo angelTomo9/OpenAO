@@ -1,7 +1,7 @@
 /**
  * Weekly Guild War & Territory Control Siege Scheduler for OpenAO MMORPG.
- * Manages active siege windows, capture point scoring accumulation over time,
- * and weekly territory ownership resolution.
+ * Manages active siege windows (including midnight spanning), King of the Hill point accumulation,
+ * and tie-breaking defense ownership retention.
  */
 
 export interface SiegeWindow {
@@ -15,9 +15,7 @@ export interface TerritoryState {
     controllingGuildId: string | null;
     siegeWindow: SiegeWindow;
     isSiegeActive: boolean;
-    // Map of GuildID -> Accumulated War Score
     currentWarScores: Map<string, number>;
-    // Current guild holding the central capture point (if any)
     capturePointHolderGuildId: string | null;
 }
 
@@ -26,14 +24,25 @@ export class GuildWarScheduler {
 
     /**
      * Determines if a given UTC Date falls within the configured Siege Window.
+     * Supports standard intra-day windows (e.g. 20:00-22:00) and midnight-spanning windows (e.g. 22:00-02:00).
      */
     public static isTimeInSiegeWindow(currentDate: Date, window: SiegeWindow): boolean {
         const currentDay = currentDate.getUTCDay();
         const currentHour = currentDate.getUTCHours();
-        
-        return currentDay === window.dayOfWeek && 
-               currentHour >= window.startHour && 
-               currentHour < window.endHour;
+
+        if (window.startHour < window.endHour) {
+            // Standard window within the same day
+            return currentDay === window.dayOfWeek && currentHour >= window.startHour && currentHour < window.endHour;
+        } else if (window.startHour > window.endHour) {
+            // Midnight spanning window (e.g. Saturday 22:00 to Sunday 02:00)
+            const nextDay = (window.dayOfWeek + 1) % 7;
+            const isStartDay = currentDay === window.dayOfWeek && currentHour >= window.startHour;
+            const isNextDay = currentDay === nextDay && currentHour < window.endHour;
+            return isStartDay || isNextDay;
+        } else {
+            // startHour === endHour represents 24-hour siege for that day
+            return currentDay === window.dayOfWeek;
+        }
     }
 
     /**
@@ -45,7 +54,7 @@ export class GuildWarScheduler {
         // 1. Transition into Siege Mode
         if (currentlyInWindow && !territory.isSiegeActive) {
             territory.isSiegeActive = true;
-            territory.currentWarScores.clear(); // Reset scores for the new war
+            territory.currentWarScores.clear();
             territory.capturePointHolderGuildId = null;
         }
 
@@ -60,25 +69,37 @@ export class GuildWarScheduler {
 
         // 3. Resolve Siege if time has expired
         if (territory.isSiegeActive && !currentlyInWindow) {
-            territory.isSiegeActive = false;
-            
-            let highestScore = -1;
-            let winningGuildId: string | null = null;
+            this.resolveSiege(territory);
+        }
+    }
 
-            for (const [guildId, score] of territory.currentWarScores.entries()) {
-                if (score > highestScore) {
-                    highestScore = score;
-                    winningGuildId = guildId;
+    /**
+     * Finalizes the siege and transfers territory ownership with defender tie-break priority.
+     */
+    public static resolveSiege(territory: TerritoryState): void {
+        territory.isSiegeActive = false;
+
+        const defenderGuild = territory.controllingGuildId;
+        const defenderScore = defenderGuild ? (territory.currentWarScores.get(defenderGuild) || 0) : 0;
+
+        let highestAttackerScore = 0;
+        let winningAttackerGuildId: string | null = null;
+
+        for (const [guildId, score] of territory.currentWarScores.entries()) {
+            if (guildId !== defenderGuild) {
+                if (score > highestAttackerScore) {
+                    highestAttackerScore = score;
+                    winningAttackerGuildId = guildId;
                 }
             }
-
-            // If someone scored points, transfer ownership. Otherwise, defenders keep it.
-            if (winningGuildId !== null && highestScore > 0) {
-                territory.controllingGuildId = winningGuildId;
-            }
-
-            territory.currentWarScores.clear();
-            territory.capturePointHolderGuildId = null;
         }
+
+        // Defender retains control on ties; attacker must strictly outscore defender to usurp
+        if (winningAttackerGuildId && highestAttackerScore > defenderScore) {
+            territory.controllingGuildId = winningAttackerGuildId;
+        }
+
+        territory.currentWarScores.clear();
+        territory.capturePointHolderGuildId = null;
     }
 }
