@@ -4,7 +4,7 @@ import crypto from "node:crypto";
  * Deterministic Dungeon Instance Key Generator for OpenAO MMORPG.
  * Generates HMAC-SHA256 authenticated instance access keys with difficulty
  * and party scaling parameters, featuring safe constant-time verification
- * and injected server secret configuration.
+ * and strictly required server secret configuration.
  */
 
 export type DungeonDifficulty = "NORMAL" | "HEROIC" | "MYTHIC";
@@ -36,18 +36,27 @@ export class DungeonInstanceKeyGenerator {
         return field.trim();
     }
 
+    private static resolveSecret(serverSecret?: string): string {
+        const secret = serverSecret || process.env.INSTANCE_KEY_SECRET;
+        if (!secret || secret.trim().length === 0) {
+            throw new Error("Instance key generation requires a non-empty server secret or INSTANCE_KEY_SECRET environment variable.");
+        }
+        return secret;
+    }
+
     /**
-     * Generates a tamper-proof instance token string with caller-injected secret.
+     * Generates a tamper-proof instance token string with strictly required secret.
      */
     public static generateInstanceKey(
         params: InstanceKeyParams,
-        serverSecret: string = process.env.INSTANCE_KEY_SECRET || "dev_secret_key_change_in_prod"
+        serverSecret?: string
     ): string {
+        const secret = this.resolveSecret(serverSecret);
         const safeDungeonId = this.sanitizeField(params.dungeonId);
         const safeLeaderId = this.sanitizeField(params.partyLeaderId);
 
         const payload = `${safeDungeonId}:${params.difficulty}:${safeLeaderId}:${params.partySize}:${params.createdAtEpochMs}`;
-        const hmac = crypto.createHmac("sha256", serverSecret).update(payload).digest("hex");
+        const hmac = crypto.createHmac("sha256", secret).update(payload).digest("hex");
         const signature = hmac.slice(0, this.SIGNATURE_HEX_LENGTH);
 
         return `inst_${payload}:${signature}`;
@@ -59,7 +68,7 @@ export class DungeonInstanceKeyGenerator {
     public static verifyInstanceKey(
         instanceKey: string,
         params: InstanceKeyParams,
-        serverSecret: string = process.env.INSTANCE_KEY_SECRET || "dev_secret_key_change_in_prod"
+        serverSecret?: string
     ): boolean {
         if (!instanceKey || typeof instanceKey !== "string") {
             return false;

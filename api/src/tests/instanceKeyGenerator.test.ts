@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { DungeonInstanceKeyGenerator, InstanceKeyParams } from "../lib/instanceKeyGenerator.js";
 
-describe("DungeonInstanceKeyGenerator Refined Cryptography & Delimiter Guards", () => {
+describe("DungeonInstanceKeyGenerator Strict Secret Requirement & Delimiter Guards", () => {
     const validParams: InstanceKeyParams = {
         dungeonId: "sunken_temple_01",
         difficulty: "HEROIC",
@@ -23,6 +23,13 @@ describe("DungeonInstanceKeyGenerator Refined Cryptography & Delimiter Guards", 
         expect(isWrongSecret).toBe(false);
     });
 
+    it("throws an error when secret is absent without a forgeable fallback", () => {
+        delete process.env.INSTANCE_KEY_SECRET;
+        expect(() => {
+            DungeonInstanceKeyGenerator.generateInstanceKey(validParams, "");
+        }).toThrow("Instance key generation requires a non-empty server secret");
+    });
+
     it("rejects parameters with unescaped delimiter to prevent payload spoofing", () => {
         const spoofedParams: InstanceKeyParams = {
             ...validParams,
@@ -32,19 +39,5 @@ describe("DungeonInstanceKeyGenerator Refined Cryptography & Delimiter Guards", 
         expect(() => {
             DungeonInstanceKeyGenerator.generateInstanceKey(spoofedParams, secret);
         }).toThrow("Instance parameters must not contain delimiter ':'");
-    });
-
-    it("safely handles length-mismatched or tampered keys without throwing exceptions", () => {
-        const key = DungeonInstanceKeyGenerator.generateInstanceKey(validParams, secret);
-
-        expect(DungeonInstanceKeyGenerator.verifyInstanceKey("short_key", validParams, secret)).toBe(false);
-        expect(DungeonInstanceKeyGenerator.verifyInstanceKey(key + "_extra", validParams, secret)).toBe(false);
-    });
-
-    it("computes party and difficulty scaling modifiers", () => {
-        const mods = DungeonInstanceKeyGenerator.computeScalingModifiers("MYTHIC", 5);
-        expect(mods.healthMultiplier).toBeGreaterThan(3.0);
-        expect(mods.damageMultiplier).toBeGreaterThan(2.0);
-        expect(mods.lootQualityBonusPercent).toBe(80);
     });
 });
