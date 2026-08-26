@@ -1,7 +1,7 @@
 /**
  * Spatial Quadtree Data Structure for OpenAO MMORPG.
  * Drastically optimizes 2D collision detection and Area of Effect (AoE) resolutions
- * by partitioning the world space and reducing query time complexity from O(n^2) to O(n log n).
+ * with maximum depth bounds to prevent infinite recursion on stacked entities.
  */
 
 export interface Point2D {
@@ -14,7 +14,6 @@ export interface SpatialEntity extends Point2D {
 }
 
 export class AABB {
-    // Represents an Axis-Aligned Bounding Box using center (x, y) and half-dimension (w, h)
     constructor(
         public centerX: number,
         public centerY: number,
@@ -42,7 +41,8 @@ export class AABB {
 }
 
 export class Quadtree {
-    private static readonly CAPACITY = 4; // Max entities before subdivision
+    private static readonly CAPACITY = 4;
+    private static readonly MAX_DEPTH = 8; // Prevents infinite recursion on stacked entities
 
     private entities: SpatialEntity[] = [];
     private divided = false;
@@ -52,18 +52,19 @@ export class Quadtree {
     private southWest: Quadtree | null = null;
     private southEast: Quadtree | null = null;
 
-    constructor(public boundary: AABB) {}
+    constructor(public boundary: AABB, private depth: number = 0) {}
 
     private subdivide(): void {
         const x = this.boundary.centerX;
         const y = this.boundary.centerY;
         const w = this.boundary.halfWidth;
         const h = this.boundary.halfHeight;
+        const nextDepth = this.depth + 1;
 
-        this.northWest = new Quadtree(new AABB(x - w / 2, y + h / 2, w / 2, h / 2));
-        this.northEast = new Quadtree(new AABB(x + w / 2, y + h / 2, w / 2, h / 2));
-        this.southWest = new Quadtree(new AABB(x - w / 2, y - h / 2, w / 2, h / 2));
-        this.southEast = new Quadtree(new AABB(x + w / 2, y - h / 2, w / 2, h / 2));
+        this.northWest = new Quadtree(new AABB(x - w / 2, y + h / 2, w / 2, h / 2), nextDepth);
+        this.northEast = new Quadtree(new AABB(x + w / 2, y + h / 2, w / 2, h / 2), nextDepth);
+        this.southWest = new Quadtree(new AABB(x - w / 2, y - h / 2, w / 2, h / 2), nextDepth);
+        this.southEast = new Quadtree(new AABB(x + w / 2, y - h / 2, w / 2, h / 2), nextDepth);
 
         this.divided = true;
     }
@@ -73,7 +74,8 @@ export class Quadtree {
             return false;
         }
 
-        if (this.entities.length < Quadtree.CAPACITY) {
+        // If below capacity OR reached max depth cap, store directly in this leaf
+        if (this.entities.length < Quadtree.CAPACITY || this.depth >= Quadtree.MAX_DEPTH) {
             this.entities.push(entity);
             return true;
         }
@@ -82,17 +84,51 @@ export class Quadtree {
             this.subdivide();
         }
 
-        if (this.northWest!.insert(entity)) return true;
-        if (this.northEast!.insert(entity)) return true;
-        if (this.southWest!.insert(entity)) return true;
-        if (this.southEast!.insert(entity)) return true;
+        return (
+            this.northWest!.insert(entity) ||
+            this.northEast!.insert(entity) ||
+            this.southWest!.insert(entity) ||
+            this.southEast!.insert(entity)
+        );
+    }
+
+    public remove(entityId: string): boolean {
+        const idx = this.entities.findIndex(e => e.entityId === entityId);
+        if (idx !== -1) {
+            this.entities.splice(idx, 1);
+            return true;
+        }
+
+        if (this.divided) {
+            return (
+                this.northWest!.remove(entityId) ||
+                this.northEast!.remove(entityId) ||
+                this.southWest!.remove(entityId) ||
+                this.southEast!.remove(entityId)
+            );
+        }
 
         return false;
     }
 
+    public clear(): void {
+        this.entities = [];
+        if (this.divided) {
+            this.northWest?.clear();
+            this.northEast?.clear();
+            this.southWest?.clear();
+            this.southEast?.clear();
+            this.northWest = null;
+            this.northEast = null;
+            this.southWest = null;
+            this.southEast = null;
+            this.divided = false;
+        }
+    }
+
     public queryRange(range: AABB, found: SpatialEntity[] = []): SpatialEntity[] {
         if (!this.boundary.intersectsAABB(range)) {
-            return found; // Empty intersection
+            return found;
         }
 
         for (const entity of this.entities) {
