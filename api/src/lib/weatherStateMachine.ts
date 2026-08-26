@@ -1,7 +1,7 @@
 /**
  * Dynamic Weather State Machine & Biome Climatology Engine for OpenAO MMORPG.
  * Simulates regional weather transitions, environmental hazard effects (lightning strikes, visibility reduction),
- * and elemental spell damage modifiers.
+ * and elemental spell damage modifiers with immutable state protection.
  */
 
 export type WeatherType = "CLEAR_SKY" | "LIGHT_RAIN" | "THUNDERSTORM" | "DENSE_FOG" | "BLIZZARD" | "SANDSTORM";
@@ -13,7 +13,7 @@ export interface WeatherModifiers {
     fireSpellMultiplier: number;
     waterSpellMultiplier: number;
     lightningSpellMultiplier: number;
-    lightningStrikeChancePerTick: number; // e.g. 0.001
+    lightningStrikeChancePerTick: number;
 }
 
 export const WEATHER_EFFECTS: Record<WeatherType, WeatherModifiers> = {
@@ -80,14 +80,15 @@ export class WeatherStateMachine {
      * Determines the next weather state for a biome based on weighted climatology.
      */
     public static rollNextWeather(biome: BiomeType, rng: () => number = Math.random): WeatherType {
-        const weights = BIOME_WEATHER_WEIGHTS[biome];
+        const weights = BIOME_WEATHER_WEIGHTS[biome] || BIOME_WEATHER_WEIGHTS.TEMPERATE_FOREST;
         let totalWeight = 0;
 
         for (const w of Object.values(weights)) {
             totalWeight += w;
         }
 
-        let roll = rng() * totalWeight;
+        const safeRng = Math.min(0.99999, Math.max(0.0, rng()));
+        let roll = safeRng * totalWeight;
 
         for (const [weatherStr, weight] of Object.entries(weights)) {
             if (roll < weight) {
@@ -100,9 +101,10 @@ export class WeatherStateMachine {
     }
 
     /**
-     * Retrieves the gameplay modifiers associated with a weather condition.
+     * Retrieves an immutable copy of gameplay modifiers associated with a weather condition.
      */
     public static getWeatherModifiers(weather: WeatherType): WeatherModifiers {
-        return WEATHER_EFFECTS[weather] || WEATHER_EFFECTS.CLEAR_SKY;
+        const effect = WEATHER_EFFECTS[weather] || WEATHER_EFFECTS.CLEAR_SKY;
+        return { ...effect }; // Return shallow clone to prevent caller mutation of constant
     }
 }
