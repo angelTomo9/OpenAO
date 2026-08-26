@@ -1,143 +1,112 @@
 /**
- * Combat Armor Penetration, Elemental Resistance & Damage Mitigation Engine for OpenAO MMORPG.
- * Simulates physical armor penetration curves, magic resistance thresholds, and true damage.
+ * Combat Damage Mitigation & Armor Penetration Engine for OpenAO MMORPG.
+ * Simulates hierarchical armor reduction (flat deduction + percentage penetration),
+ * elemental resistance matrices, and unmitigated True Damage.
  */
 
-export type DamageType = "PHYSICAL" | "MAGIC_FIRE" | "MAGIC_ICE" | "MAGIC_LIGHTNING" | "POISON" | "TRUE_DAMAGE";
+export type DamageType = "PHYSICAL" | "MAGICAL_FIRE" | "MAGICAL_WATER" | "MAGICAL_EARTH" | "TRUE_DAMAGE";
 
-export interface AttackerCombatStats {
-    level: number;
-    rawDamage: number;
-    damageType: DamageType;
+export interface CombatAttackerStats {
+    attackPower: number;
     flatArmorPenetration: number;
-    percentArmorPenetration: number; // 0.0 to 1.0
-    criticalMultiplier?: number; // default 1.5
-    isCriticalHit?: boolean;
+    percentArmorPenetration: number; // 0.0 to 1.0 (e.g. 0.30 = 30%)
+    criticalMultiplier: number;
+    isCriticalStrike?: boolean;
 }
 
-export interface DefenderCombatStats {
-    level: number;
-    physicalArmor: number;
-    elementalResistances: {
-        fireResist: number; // 0 to 100 (%)
-        iceResist: number;
-        lightningResist: number;
-        poisonResist: number;
-    };
-    vulnerabilityMultiplier?: number; // e.g. 1.2 = +20% extra damage taken
+export interface CombatDefenderStats {
+    armor: number;
+    fireResistancePercent: number;  // 0.0 to 0.75 (max 75%)
+    waterResistancePercent: number;
+    earthResistancePercent: number;
+    flatDamageReduction: number;
 }
 
 export interface DamageCalculationResult {
     rawDamage: number;
+    mitigatedDamage: number;
+    armorDeduction: number;
+    resistanceDeduction: number;
     effectiveArmor: number;
-    mitigationPercentage: number;
-    damageMitigated: number;
-    finalDamageDealt: number;
     isCritical: boolean;
 }
 
 export class CombatMitigationEngine {
+    private static readonly ARMOR_COEFFICIENT = 100; // Formula: armor / (armor + 100)
+    private static readonly MAX_RESISTANCE_PERCENT = 0.75; // 75% hard cap
+
     /**
-     * Computes the effective armor value after applying flat and percentage penetration.
+     * Calculates the effective armor after applying attacker flat and percentage penetration.
      */
-    public static calculateEffectiveArmor(
-        rawArmor: number,
-        flatPen: number,
-        percentPen: number
-    ): number {
-        // Order of operations: Flat armor reduction -> Percentage armor penetration
-        const afterFlat = Math.max(0, rawArmor - flatPen);
-        const effective = afterFlat * (1.0 - Math.min(1.0, Math.max(0, percentPen)));
-        return Math.max(0, effective);
+    public static calculateEffectiveArmor(defenderArmor: number, attacker: CombatAttackerStats): number {
+        const safeArmor = Math.max(0, defenderArmor);
+        const afterFlat = Math.max(0, safeArmor - attacker.flatArmorPenetration);
+        const percentPen = Math.min(1.0, Math.max(0.0, attacker.percentArmorPenetration));
+        const finalArmor = afterFlat * (1.0 - percentPen);
+
+        return Math.round(finalArmor * 100) / 100;
     }
 
     /**
-     * Computes damage reduction fraction from physical armor: Armor / (Armor + K + AttackerLevel * 10).
+     * Calculates total damage dealt after armor, elemental resistances, and critical modifiers.
      */
-    public static calculatePhysicalMitigation(
-        effectiveArmor: number,
-        attackerLevel: number
-    ): number {
-        const kConstant = 100 + attackerLevel * 10;
-        return effectiveArmor / (effectiveArmor + kConstant);
-    }
-
-    /**
-     * Resolves end-to-end combat hit damage calculation.
-     */
-    public static resolveDamage(
-        attacker: AttackerCombatStats,
-        defender: DefenderCombatStats
+    public static calculateDamage(
+        damageType: DamageType,
+        attacker: CombatAttackerStats,
+        defender: CombatDefenderStats
     ): DamageCalculationResult {
-        let baseDmg = attacker.rawDamage;
+        let rawDamage = Math.max(1, attacker.attackPower);
 
-        // Apply critical strike multiplier if applicable
-        const isCritical = Boolean(attacker.isCriticalHit);
-        if (isCritical) {
-            baseDmg *= attacker.criticalMultiplier ?? 1.5;
+        if (attacker.isCriticalStrike) {
+            rawDamage = Math.round(rawDamage * Math.max(1.0, attacker.criticalMultiplier));
         }
 
-        // True damage bypasses all mitigation
-        if (attacker.damageType === "TRUE_DAMAGE") {
-            const vuln = defender.vulnerabilityMultiplier ?? 1.0;
-            const finalDmg = Math.round(baseDmg * vuln);
+        // True damage bypasses all armor and resistances completely
+        if (damageType === "TRUE_DAMAGE") {
             return {
-                rawDamage: attacker.rawDamage,
+                rawDamage,
+                mitigatedDamage: rawDamage,
+                armorDeduction: 0,
+                resistanceDeduction: 0,
                 effectiveArmor: 0,
-                mitigationPercentage: 0,
-                damageMitigated: 0,
-                finalDamageDealt: finalDmg,
-                isCritical,
+                isCritical: !!attacker.isCriticalStrike,
             };
         }
 
-        let mitigationFrac = 0;
+        let currentDamage = rawDamage;
+        let armorDeduction = 0;
+        let resistanceDeduction = 0;
         let effectiveArmor = 0;
 
-        if (attacker.damageType === "PHYSICAL") {
-            effectiveArmor = this.calculateEffectiveArmor(
-                defender.physicalArmor,
-                attacker.flatArmorPenetration,
-                attacker.percentArmorPenetration
-            );
-            mitigationFrac = this.calculatePhysicalMitigation(effectiveArmor, attacker.level);
+        if (damageType === "PHYSICAL") {
+            effectiveArmor = this.calculateEffectiveArmor(defender.armor, attacker);
+            // Percentage damage reduction formula: Armor / (Armor + 100)
+            const armorReductionFraction = effectiveArmor / (effectiveArmor + this.ARMOR_COEFFICIENT);
+            armorDeduction = Math.round(currentDamage * armorReductionFraction);
+            currentDamage = Math.max(1, currentDamage - armorDeduction);
+
+            // Apply defender flat damage reduction
+            const flatDeduction = Math.max(0, defender.flatDamageReduction);
+            currentDamage = Math.max(1, currentDamage - flatDeduction);
         } else {
-            // Elemental Magic resistances
-            let resistPercent = 0;
-            switch (attacker.damageType) {
-                case "MAGIC_FIRE":
-                    resistPercent = defender.elementalResistances.fireResist;
-                    break;
-                case "MAGIC_ICE":
-                    resistPercent = defender.elementalResistances.iceResist;
-                    break;
-                case "MAGIC_LIGHTNING":
-                    resistPercent = defender.elementalResistances.lightningResist;
-                    break;
-                case "POISON":
-                    resistPercent = defender.elementalResistances.poisonResist;
-                    break;
-            }
-            // Clamped to 85% max resistance cap
-            mitigationFrac = Math.min(0.85, Math.max(0, resistPercent / 100));
+            // Magical elemental damage types
+            let resPercent = 0.0;
+            if (damageType === "MAGICAL_FIRE") resPercent = defender.fireResistancePercent;
+            else if (damageType === "MAGICAL_WATER") resPercent = defender.waterResistancePercent;
+            else if (damageType === "MAGICAL_EARTH") resPercent = defender.earthResistancePercent;
+
+            const clampedRes = Math.min(this.MAX_RESISTANCE_PERCENT, Math.max(0.0, resPercent));
+            resistanceDeduction = Math.round(currentDamage * clampedRes);
+            currentDamage = Math.max(1, currentDamage - resistanceDeduction);
         }
 
-        const mitigatedAmount = baseDmg * mitigationFrac;
-        let afterMitigation = baseDmg - mitigatedAmount;
-
-        // Vulnerability multiplier
-        const vuln = defender.vulnerabilityMultiplier ?? 1.0;
-        afterMitigation *= vuln;
-
-        const finalDamage = Math.max(1, Math.round(afterMitigation));
-
         return {
-            rawDamage: attacker.rawDamage,
-            effectiveArmor: Math.round(effectiveArmor * 100) / 100,
-            mitigationPercentage: Math.round(mitigationFrac * 10000) / 100, // e.g. 35.5%
-            damageMitigated: Math.round(mitigatedAmount * 100) / 100,
-            finalDamageDealt: finalDamage,
-            isCritical,
+            rawDamage,
+            mitigatedDamage: Math.max(1, Math.round(currentDamage)),
+            armorDeduction,
+            resistanceDeduction,
+            effectiveArmor,
+            isCritical: !!attacker.isCriticalStrike,
         };
     }
 }

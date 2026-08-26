@@ -1,64 +1,47 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { CombatMitigationEngine, AttackerCombatStats, DefenderCombatStats } from "../lib/combatMitigation.js";
+import { describe, it, expect } from "vitest";
+import { CombatMitigationEngine, CombatAttackerStats, CombatDefenderStats } from "../lib/combatMitigation.js";
 
-describe("CombatMitigationEngine Damage & Armor Penetration", () => {
-    const baseDefender: DefenderCombatStats = {
-        level: 25,
-        physicalArmor: 200,
-        elementalResistances: {
-            fireResist: 40,
-            iceResist: 20,
-            lightningResist: 0,
-            poisonResist: 50,
-        },
+describe("CombatMitigationEngine Armor Penetration and Elemental Mitigations", () => {
+    const baseAttacker: CombatAttackerStats = {
+        attackPower: 100,
+        flatArmorPenetration: 0,
+        percentArmorPenetration: 0,
+        criticalMultiplier: 1.5,
+        isCriticalStrike: false,
     };
 
-    it("calculates physical damage reduction and penetration scaling", () => {
-        const attacker: AttackerCombatStats = {
-            level: 20,
-            rawDamage: 100,
-            damageType: "PHYSICAL",
-            flatArmorPenetration: 50, // 200 - 50 = 150
-            percentArmorPenetration: 0.20, // 150 * 0.8 = 120 effective armor
-        };
+    const baseDefender: CombatDefenderStats = {
+        armor: 100, // 100 armor = 50% physical damage reduction (100 / (100+100))
+        fireResistancePercent: 0.30,
+        waterResistancePercent: 0.0,
+        earthResistancePercent: 0.0,
+        flatDamageReduction: 0,
+    };
 
-        const result = CombatMitigationEngine.resolveDamage(attacker, baseDefender);
-        assert.equal(result.effectiveArmor, 120);
-        assert.ok(result.mitigationPercentage > 0);
-        assert.ok(result.finalDamageDealt < 100);
-        assert.ok(result.finalDamageDealt > 50);
+    it("mitigates physical damage using asymptotic armor formula", () => {
+        const res = CombatMitigationEngine.calculateDamage("PHYSICAL", baseAttacker, baseDefender);
+        expect(res.effectiveArmor).toBe(100);
+        expect(res.armorDeduction).toBe(50);
+        expect(res.mitigatedDamage).toBe(50);
     });
 
-    it("true damage completely ignores armor and elemental resistances", () => {
-        const trueDmgAttacker: AttackerCombatStats = {
-            level: 20,
-            rawDamage: 150,
-            damageType: "TRUE_DAMAGE",
-            flatArmorPenetration: 0,
-            percentArmorPenetration: 0,
+    it("reduces effective armor via flat and percentage armor penetration", () => {
+        const penAttacker: CombatAttackerStats = {
+            ...baseAttacker,
+            flatArmorPenetration: 20, // 100 - 20 = 80
+            percentArmorPenetration: 0.50, // 80 * 50% = 40 effective armor
         };
 
-        const result = CombatMitigationEngine.resolveDamage(trueDmgAttacker, baseDefender);
-        assert.equal(result.finalDamageDealt, 150);
-        assert.equal(result.mitigationPercentage, 0);
-        assert.equal(result.damageMitigated, 0);
+        const res = CombatMitigationEngine.calculateDamage("PHYSICAL", penAttacker, baseDefender);
+        expect(res.effectiveArmor).toBe(40);
+        // 40 armor = 40 / 140 = ~28.57% reduction -> 100 * 28.57% = 29 deduction -> 71 damage
+        expect(res.mitigatedDamage).toBe(71);
     });
 
-    it("applies critical strike multiplier to elemental spells", () => {
-        const critAttacker: AttackerCombatStats = {
-            level: 20,
-            rawDamage: 100,
-            damageType: "MAGIC_FIRE",
-            flatArmorPenetration: 0,
-            percentArmorPenetration: 0,
-            isCriticalHit: true,
-            criticalMultiplier: 2.0, // 200 base fire damage
-        };
-
-        const result = CombatMitigationEngine.resolveDamage(critAttacker, baseDefender);
-        // 40% fire resist on 200 damage = 120 dealt
-        assert.equal(result.isCritical, true);
-        assert.equal(result.finalDamageDealt, 120);
+    it("bypasses all armor and resistances when dealing TRUE_DAMAGE", () => {
+        const res = CombatMitigationEngine.calculateDamage("TRUE_DAMAGE", baseAttacker, baseDefender);
+        expect(res.mitigatedDamage).toBe(100);
+        expect(res.armorDeduction).toBe(0);
+        expect(res.resistanceDeduction).toBe(0);
     });
 });
