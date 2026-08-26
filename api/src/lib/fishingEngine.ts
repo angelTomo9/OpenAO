@@ -1,7 +1,7 @@
 /**
  * Water Tile Fishing Simulation & Loot Catch Engine for OpenAO MMORPG.
  * Simulates water salinity/depth classifications, bait modifiers, nocturnal species,
- * and sunken treasure chest recovery.
+ * and sunken treasure chest recovery with robust input validation.
  */
 
 export type WaterTileType = "FRESHWATER_RIVER" | "COASTAL_OCEAN" | "DEEP_SEA" | "LAVA_LAKE";
@@ -64,8 +64,12 @@ export class FishingEngine {
         rodBonus: number,
         baitPotency = 0
     ): number {
+        const clampedSkill = Math.min(100, Math.max(1, skill));
+        const clampedRodTier = Math.min(4, Math.max(1, rodTier));
+        const clampedBait = Math.min(3, Math.max(0, baitPotency));
+
         // Base formula: 30% + (skill / 100 * 45%) + (rodTier * 4%) + rodBonus + (bait * 5%)
-        const chance = 0.30 + (skill / 100) * 0.45 + rodTier * 0.04 + rodBonus + baitPotency * 0.05;
+        const chance = 0.30 + (clampedSkill / 100) * 0.45 + clampedRodTier * 0.04 + rodBonus + clampedBait * 0.05;
         return Math.min(0.95, Math.max(0.10, chance));
     }
 
@@ -86,7 +90,6 @@ export class FishingEngine {
             };
         }
 
-        // Filter eligible species for this water body and time of day
         const eligible = FISH_SPECIES_CATALOG.filter((fish) => {
             if (fish.waterType !== params.waterType) return false;
             if (fish.minSkill > params.fishingSkill) return false;
@@ -102,12 +105,11 @@ export class FishingEngine {
             };
         }
 
-        // Weighted selection
         let totalWeight = 0;
         const weightedPool = eligible.map((fish) => {
             let weight = fish.baseCatchWeight;
             if (fish.isTreasureChest && params.bait?.attractsRare) {
-                weight *= 3.0; // Bait boosts rare drops
+                weight *= 3.0;
             }
             totalWeight += weight;
             return { fish, weight };

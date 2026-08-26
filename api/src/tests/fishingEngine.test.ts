@@ -1,8 +1,7 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, expect } from "vitest";
 import { FishingEngine, FishingRod, FishingBait } from "../lib/fishingEngine.js";
 
-describe("FishingEngine Water Habitats & Catch Rates", () => {
+describe("FishingEngine Habitat Classification and Catch Calculations", () => {
     const basicRod: FishingRod = {
         rodId: "rod_cane_01",
         name: "Simple Wooden Rod",
@@ -10,22 +9,21 @@ describe("FishingEngine Water Habitats & Catch Rates", () => {
         bonusCatchPercent: 0.0,
     };
 
-    it("catches river fish with basic skill", () => {
+    it("catches river fish with baseline skill and rod", () => {
         const res = FishingEngine.attemptFishing({
             fishingSkill: 15,
             rod: basicRod,
             waterType: "FRESHWATER_RIVER",
             isNightTime: false,
-            rng: () => 0.05, // High success roll
+            rng: () => 0.05,
         });
 
-        assert.equal(res.success, true);
-        assert.equal(res.caughtFish?.speciesId, "carp_river");
-        assert.ok(res.skillExpGained > 0);
+        expect(res.success).toBe(true);
+        expect(res.caughtFish?.speciesId).toBe("carp_river");
+        expect(res.skillExpGained).toBeGreaterThan(0);
     });
 
     it("restricts nocturnal shadow eels to nighttime conditions", () => {
-        // Daytime attempt at Coastal Ocean with high skill
         const dayRes = FishingEngine.attemptFishing({
             fishingSkill: 60,
             rod: basicRod,
@@ -33,11 +31,10 @@ describe("FishingEngine Water Habitats & Catch Rates", () => {
             isNightTime: false,
             rng: () => 0.05,
         });
-        assert.equal(dayRes.caughtFish?.speciesId, "salmon_ocean");
+        expect(dayRes.caughtFish?.speciesId).toBe("salmon_ocean");
 
-        // Nighttime attempt allows Shadow Eel
         let callCount = 0;
-        const rolls = [0.05, 0.90]; // First roll passes bite check, second roll picks nocturnal eel
+        const rolls = [0.05, 0.90];
         const nightRes = FishingEngine.attemptFishing({
             fishingSkill: 60,
             rod: basicRod,
@@ -45,11 +42,11 @@ describe("FishingEngine Water Habitats & Catch Rates", () => {
             isNightTime: true,
             rng: () => rolls[callCount++ % rolls.length],
         });
-        assert.equal(nightRes.success, true);
-        assert.equal(nightRes.caughtFish?.speciesId, "shadow_eel");
+        expect(nightRes.success).toBe(true);
+        expect(nightRes.caughtFish?.speciesId).toBe("shadow_eel");
     });
 
-    it("boosts sunken treasure chest chances with rare bait in deep sea", () => {
+    it("boosts rare sunken treasure chest probability with glowing shrimp bait", () => {
         const rareBait: FishingBait = {
             baitId: "bait_glow_shrimp",
             name: "Luminescent Shrimp",
@@ -66,6 +63,6 @@ describe("FishingEngine Water Habitats & Catch Rates", () => {
             rng: () => 0.01,
         });
 
-        assert.equal(res.success, true);
+        expect(res.success).toBe(true);
     });
 });
