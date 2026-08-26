@@ -1,15 +1,16 @@
 /**
  * Dynamic NPC Vendor Supply & Demand Economy Engine for OpenAO MMORPG.
- * Simulates price elasticity based on local stock scarcity and server-tick restocking.
+ * Simulates price elasticity based on local stock scarcity, server-tick restocking,
+ * and robust anti-arbitrage mathematical pricing.
  */
 
 export interface VendorItemEntry {
     itemId: string;
     basePrice: number;
     currentStock: number;
-    targetStock: number; // The equilibrium stock size
-    priceVolatilityExponent: number; // e.g., 0.5 for square root scaling, 1.0 for linear
-    restockRatePerTick: number; // Units restocked (or decayed) towards targetStock per tick
+    targetStock: number;
+    priceVolatilityExponent: number; // e.g., 0.5 for square root scaling
+    restockRatePerTick: number;
 }
 
 export interface NpcVendorState {
@@ -18,33 +19,60 @@ export interface NpcVendorState {
 }
 
 export class NpcEconomyEngine {
+    private static readonly MAX_TRADE_QUANTITY = 5000;
+    private static readonly VENDOR_BUY_MARKDOWN = 0.50; // Vendor pays 50% of the item's purchase price
+
+    /**
+     * Calculates the unit buy price for a given stock level.
+     */
+    public static calculateUnitBuyPriceForStock(basePrice: number, targetStock: number, currentStock: number, volatility: number): number {
+        const safeStock = Math.max(0, currentStock);
+        const supplyRatio = (targetStock + 1) / (safeStock + 1);
+        const modifier = Math.pow(supplyRatio, volatility);
+        return Math.max(1, Math.ceil(basePrice * modifier));
+    }
+
     /**
      * Calculates the current dynamic price of a single unit of the item based on supply scarcity.
-     * Price inflates when currentStock < targetStock.
-     * Price deflates when currentStock > targetStock.
      */
     public static calculateUnitBuyPrice(item: VendorItemEntry): number {
-        // Prevent division by zero and extreme asymptotics by adding 1 to stocks
-        const supplyRatio = (item.targetStock + 1) / (item.currentStock + 1);
-        const modifier = Math.pow(supplyRatio, item.priceVolatilityExponent);
-        const rawPrice = item.basePrice * modifier;
-        
-        return Math.max(1, Math.ceil(rawPrice));
+        return this.calculateUnitBuyPriceForStock(
+            item.basePrice,
+            item.targetStock,
+            item.currentStock,
+            item.priceVolatilityExponent
+        );
     }
 
     /**
-     * Sells price is typically lower than buy price to prevent infinite arbitrage.
-     * We apply a 60% standard vendor markdown on top of the dynamic price.
+     * Sells price calculates payout using stock after addition with markdown to guarantee zero arbitrage.
      */
     public static calculateUnitSellPrice(item: VendorItemEntry): number {
-        const buyPrice = this.calculateUnitBuyPrice(item);
-        return Math.max(1, Math.floor(buyPrice * 0.60));
+        // Price evaluated against stock AFTER adding 1 unit
+        const buyPriceAtNextStock = this.calculateUnitBuyPriceForStock(
+            item.basePrice,
+            item.targetStock,
+            item.currentStock + 1,
+            item.priceVolatilityExponent
+        );
+        return Math.max(1, Math.floor(buyPriceAtNextStock * this.VENDOR_BUY_MARKDOWN));
     }
 
     /**
-     * Executes a player purchase from the vendor.
+     * Executes a player purchase from the vendor with strict validation.
      */
-    public static executePlayerPurchase(vendor: NpcVendorState, itemId: string, quantity: number): { success: boolean; totalCost: number; reason?: string } {
+    public static executePlayerPurchase(
+        vendor: NpcVendorState,
+        itemId: string,
+        quantity: number
+    ): { success: boolean; totalCost: number; reason?: string } {
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+            return { success: false, totalCost: 0, reason: "Quantity must be a positive integer" };
+        }
+        if (quantity > this.MAX_TRADE_QUANTITY) {
+            return { success: false, totalCost: 0, reason: "Quantity exceeds maximum batch trade limit" };
+        }
+
         const item = vendor.inventory.get(itemId);
         if (!item) return { success: false, totalCost: 0, reason: "Item not sold by this vendor" };
 
@@ -53,7 +81,6 @@ export class NpcEconomyEngine {
         }
 
         let totalCost = 0;
-        // Calculate cost per unit sequentially because the price inflates with each unit purchased
         for (let i = 0; i < quantity; i++) {
             totalCost += this.calculateUnitBuyPrice(item);
             item.currentStock -= 1;
@@ -63,14 +90,24 @@ export class NpcEconomyEngine {
     }
 
     /**
-     * Executes a player sale to the vendor.
+     * Executes a player sale to the vendor with strict validation.
      */
-    public static executePlayerSale(vendor: NpcVendorState, itemId: string, quantity: number): { success: boolean; totalPayout: number; reason?: string } {
+    public static executePlayerSale(
+        vendor: NpcVendorState,
+        itemId: string,
+        quantity: number
+    ): { success: boolean; totalPayout: number; reason?: string } {
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+            return { success: false, totalPayout: 0, reason: "Quantity must be a positive integer" };
+        }
+        if (quantity > this.MAX_TRADE_QUANTITY) {
+            return { success: false, totalPayout: 0, reason: "Quantity exceeds maximum batch trade limit" };
+        }
+
         const item = vendor.inventory.get(itemId);
         if (!item) return { success: false, totalPayout: 0, reason: "Vendor does not buy this item" };
 
         let totalPayout = 0;
-        // Calculate payout sequentially because price deflates with each unit sold to the vendor
         for (let i = 0; i < quantity; i++) {
             totalPayout += this.calculateUnitSellPrice(item);
             item.currentStock += 1;
