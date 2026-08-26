@@ -1,6 +1,6 @@
 /**
  * Item Durability Degradation & Blacksmith Repair Engine for OpenAO MMORPG.
- * Simulates combat wear, broken item stat penalties, and dynamic repair gold costs.
+ * Simulates combat wear, broken item stat penalties, and dynamic repair gold costs with payment gating.
  */
 
 export type EquipmentSlot = "WEAPON_MAIN" | "WEAPON_OFFHAND" | "HELMET" | "CHEST_ARMOR" | "SHIELD";
@@ -17,19 +17,26 @@ export interface ItemDurabilityState {
 }
 
 export interface DurabilityDegradeOptions {
-    rng?: () => number; // Default Math.random
-    isCriticalStrike?: boolean; // Critical hits cause extra wear
+    rng?: () => number;
+    isCriticalStrike?: boolean;
+}
+
+export interface RepairItemResult {
+    success: boolean;
+    goldCost: number;
+    remainingGold?: number;
+    reason?: string;
 }
 
 export class ItemDurabilityEngine {
-    private static readonly REPAIR_COST_FACTOR = 0.40; // Full repair costs 40% of item's base gold value
+    private static readonly REPAIR_COST_FACTOR = 0.40;
 
     /**
      * Applies durability loss on physical combat action.
      */
     public static applyWear(
         item: ItemDurabilityState,
-        wearChance: number, // 0.0 to 1.0 (e.g. 0.10 for weapon attack, 0.15 for armor block)
+        wearChance: number,
         options: DurabilityDegradeOptions = {}
     ): { durabilityLost: number; isNowBroken: boolean } {
         if (item.isBroken || item.currentDurability <= 0) {
@@ -54,11 +61,11 @@ export class ItemDurabilityEngine {
     }
 
     /**
-     * Calculates the effective combat stat (attack power or armor defense) taking broken condition into account.
+     * Calculates the effective combat stat taking broken condition into account.
      */
     public static getEffectiveStat(item: ItemDurabilityState): number {
         if (item.isBroken || item.currentDurability <= 0) {
-            return 0; // Broken items offer 0 bonus
+            return 0;
         }
         return item.baseAttackOrDefense;
     }
@@ -77,13 +84,35 @@ export class ItemDurabilityEngine {
     }
 
     /**
-     * Repairs an item to max durability, clearing broken status.
+     * Repairs an item to max durability with player gold balance verification.
      */
-    public static repairItem(item: ItemDurabilityState): { success: boolean; goldCost: number } {
+    public static repairItem(item: ItemDurabilityState, availableGold: number): RepairItemResult {
         const cost = this.calculateRepairCost(item);
+
+        if (cost === 0) {
+            return {
+                success: true,
+                goldCost: 0,
+                remainingGold: availableGold,
+                reason: "Item is already at maximum durability",
+            };
+        }
+
+        if (availableGold < cost) {
+            return {
+                success: false,
+                goldCost: cost,
+                reason: "Insufficient gold to repair item",
+            };
+        }
+
         item.currentDurability = item.maxDurability;
         item.isBroken = false;
 
-        return { success: true, goldCost: cost };
+        return {
+            success: true,
+            goldCost: cost,
+            remainingGold: availableGold - cost,
+        };
     }
 }

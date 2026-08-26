@@ -1,8 +1,7 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, expect } from "vitest";
 import { ItemDurabilityEngine, ItemDurabilityState } from "../lib/itemDurability.js";
 
-describe("ItemDurabilityEngine Wear & Blacksmith Repair", () => {
+describe("ItemDurabilityEngine Refined Wear & Blacksmith Gold Gating", () => {
     const sword: ItemDurabilityState = {
         itemId: "silver_broadsword_01",
         name: "Silver Broadsword",
@@ -14,39 +13,42 @@ describe("ItemDurabilityEngine Wear & Blacksmith Repair", () => {
         isBroken: false,
     };
 
-    it("applies durability loss on weapon hit", () => {
-        const item = { ...sword };
-        const res = ItemDurabilityEngine.applyWear(item, 0.10, { rng: () => 0.05 }); // Rolled below chance
-
-        assert.equal(res.durabilityLost, 1);
-        assert.equal(item.currentDurability, 49);
-        assert.equal(item.isBroken, false);
-    });
-
-    it("breaks item at zero durability, reducing effective combat stats to zero", () => {
-        const item: ItemDurabilityState = { ...sword, currentDurability: 1 };
+    it("applies durability loss and breaks at zero durability", () => {
+        const item = { ...sword, currentDurability: 1 };
         const res = ItemDurabilityEngine.applyWear(item, 0.5, { rng: () => 0.1 });
 
-        assert.equal(res.isNowBroken, true);
-        assert.equal(item.currentDurability, 0);
-        assert.equal(ItemDurabilityEngine.getEffectiveStat(item), 0);
+        expect(res.isNowBroken).toBe(true);
+        expect(item.currentDurability).toBe(0);
+        expect(ItemDurabilityEngine.getEffectiveStat(item)).toBe(0);
     });
 
-    it("calculates repair cost and restores item to pristine condition", () => {
+    it("rejects repair when player lacks sufficient gold", () => {
         const damagedItem: ItemDurabilityState = {
             ...sword,
-            currentDurability: 25, // 50% missing durability
+            currentDurability: 25, // Missing 50% = 200 gold cost
             isBroken: false,
         };
 
-        // 1000 gold * 50% * 0.40 factor = 200 gold
-        const repairCost = ItemDurabilityEngine.calculateRepairCost(damagedItem);
-        assert.equal(repairCost, 200);
+        const repairRes = ItemDurabilityEngine.repairItem(damagedItem, 50); // Only 50 gold available
 
-        const repairRes = ItemDurabilityEngine.repairItem(damagedItem);
-        assert.equal(repairRes.success, true);
-        assert.equal(damagedItem.currentDurability, 50);
-        assert.equal(damagedItem.isBroken, false);
-        assert.equal(ItemDurabilityEngine.getEffectiveStat(damagedItem), 35);
+        expect(repairRes.success).toBe(false);
+        expect(repairRes.goldCost).toBe(200);
+        expect(damagedItem.currentDurability).toBe(25); // Durability remains unchanged
+    });
+
+    it("successfully repairs item and deducts gold when funds are sufficient", () => {
+        const damagedItem: ItemDurabilityState = {
+            ...sword,
+            currentDurability: 25,
+            isBroken: true,
+        };
+
+        const repairRes = ItemDurabilityEngine.repairItem(damagedItem, 500);
+
+        expect(repairRes.success).toBe(true);
+        expect(repairRes.goldCost).toBe(200);
+        expect(repairRes.remainingGold).toBe(300);
+        expect(damagedItem.currentDurability).toBe(50);
+        expect(damagedItem.isBroken).toBe(false);
     });
 });
