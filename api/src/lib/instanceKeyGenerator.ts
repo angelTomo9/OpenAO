@@ -3,7 +3,8 @@ import crypto from "node:crypto";
 /**
  * Deterministic Dungeon Instance Key Generator for OpenAO MMORPG.
  * Generates HMAC-SHA256 authenticated instance access keys with difficulty
- * and party scaling parameters, featuring safe constant-time verification.
+ * and party scaling parameters, featuring safe constant-time verification
+ * and injected server secret configuration.
  */
 
 export type DungeonDifficulty = "NORMAL" | "HEROIC" | "MYTHIC";
@@ -23,38 +24,60 @@ export interface InstanceScalingModifiers {
 }
 
 export class DungeonInstanceKeyGenerator {
-    private static readonly SECRET_SALT = "openao_dungeon_instance_secret_key_2026";
-    private static readonly SIGNATURE_HEX_LENGTH = 32; // 128-bit truncated HMAC for high collision resistance
+    private static readonly SIGNATURE_HEX_LENGTH = 32; // 128-bit truncated HMAC
+
+    private static sanitizeField(field: string): string {
+        if (!field || typeof field !== "string") {
+            throw new Error("Invalid string parameter for instance key");
+        }
+        if (field.includes(":")) {
+            throw new Error("Instance parameters must not contain delimiter ':'");
+        }
+        return field.trim();
+    }
 
     /**
-     * Generates a tamper-proof instance token string.
+     * Generates a tamper-proof instance token string with caller-injected secret.
      */
-    public static generateInstanceKey(params: InstanceKeyParams): string {
-        const payload = `${params.dungeonId}:${params.difficulty}:${params.partyLeaderId}:${params.partySize}:${params.createdAtEpochMs}`;
-        const hmac = crypto.createHmac("sha256", this.SECRET_SALT).update(payload).digest("hex");
+    public static generateInstanceKey(
+        params: InstanceKeyParams,
+        serverSecret: string = process.env.INSTANCE_KEY_SECRET || "dev_secret_key_change_in_prod"
+    ): string {
+        const safeDungeonId = this.sanitizeField(params.dungeonId);
+        const safeLeaderId = this.sanitizeField(params.partyLeaderId);
+
+        const payload = `${safeDungeonId}:${params.difficulty}:${safeLeaderId}:${params.partySize}:${params.createdAtEpochMs}`;
+        const hmac = crypto.createHmac("sha256", serverSecret).update(payload).digest("hex");
         const signature = hmac.slice(0, this.SIGNATURE_HEX_LENGTH);
+
         return `inst_${payload}:${signature}`;
     }
 
     /**
      * Safely verifies token authenticity and integrity using length-guarded timingSafeEqual.
      */
-    public static verifyInstanceKey(instanceKey: string, params: InstanceKeyParams): boolean {
+    public static verifyInstanceKey(
+        instanceKey: string,
+        params: InstanceKeyParams,
+        serverSecret: string = process.env.INSTANCE_KEY_SECRET || "dev_secret_key_change_in_prod"
+    ): boolean {
         if (!instanceKey || typeof instanceKey !== "string") {
             return false;
         }
 
-        const expectedKey = this.generateInstanceKey(params);
+        try {
+            const expectedKey = this.generateInstanceKey(params, serverSecret);
+            const aBuf = Buffer.from(instanceKey, "utf8");
+            const bBuf = Buffer.from(expectedKey, "utf8");
 
-        const aBuf = Buffer.from(instanceKey, "utf8");
-        const bBuf = Buffer.from(expectedKey, "utf8");
+            if (aBuf.length !== bBuf.length) {
+                return false;
+            }
 
-        // Constant-time length mismatch guard prevents RangeError exception
-        if (aBuf.length !== bBuf.length) {
+            return crypto.timingSafeEqual(aBuf, bBuf);
+        } catch {
             return false;
         }
-
-        return crypto.timingSafeEqual(aBuf, bBuf);
     }
 
     /**
@@ -89,7 +112,6 @@ export class DungeonInstanceKeyGenerator {
                 break;
         }
 
-        // Party scaling: +20% HP and +5% damage per additional party member beyond 1
         const partyHpFactor = 1.0 + (clampedParty - 1) * 0.20;
         const partyDmgFactor = 1.0 + (clampedParty - 1) * 0.05;
 
