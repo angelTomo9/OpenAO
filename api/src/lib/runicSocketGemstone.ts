@@ -1,7 +1,7 @@
 /**
  * Arcane Runic Socket & Elemental Gemstone Infusion Engine for OpenAO MMORPG.
  * Simulates socketing elemental gems into gear, chiseling new sockets with risk thresholds,
- * and aggregating compound elemental offensive and defensive stats.
+ * gem extraction, and aggregating compound elemental offensive and defensive stats.
  */
 
 export type GemstoneType = "RUBY" | "SAPPHIRE" | "TOPAZ" | "EMERALD" | "DIAMOND";
@@ -38,7 +38,7 @@ export class RunicSocketGemstoneEngine {
      * Creates a gemstone definition with scaled quality bonuses.
      */
     public static createGem(gemType: GemstoneType, quality: GemstoneQuality): GemstoneDefinition {
-        const mult = QUALITY_MULTIPLIERS[quality];
+        const mult = QUALITY_MULTIPLIERS[quality] ?? 1;
         switch (gemType) {
             case "RUBY":
                 return {
@@ -86,9 +86,12 @@ export class RunicSocketGemstoneEngine {
         useProtectionScroll = false,
         rng: () => number = Math.random
     ): { success: boolean; totalSockets: number; itemDestroyed: boolean; reason?: string } {
-        if (item.isDestroyed) {
-            return { success: false, totalSockets: 0, itemDestroyed: true, reason: "Item is already destroyed." };
+        if (!item || item.isDestroyed) {
+            return { success: false, totalSockets: 0, itemDestroyed: true, reason: "Item is already destroyed or invalid." };
         }
+
+        item.socketedGems = Array.isArray(item.socketedGems) ? item.socketedGems : [];
+        item.totalSockets = Math.max(0, item.totalSockets ?? 0);
 
         if (item.totalSockets >= this.MAX_SOCKETS) {
             return {
@@ -127,11 +130,14 @@ export class RunicSocketGemstoneEngine {
         socketIndex: number,
         gem: GemstoneDefinition
     ): { success: boolean; reason?: string } {
-        if (item.isDestroyed) return { success: false, reason: "Item is destroyed." };
+        if (!item || item.isDestroyed) return { success: false, reason: "Item is destroyed or invalid." };
+        if (!gem || !gem.gemType || !gem.quality) return { success: false, reason: "Invalid gemstone provided." };
+
+        item.socketedGems = Array.isArray(item.socketedGems) ? item.socketedGems : [];
         if (socketIndex < 0 || socketIndex >= item.totalSockets) {
-            return { success: false, reason: "Invalid socket index." };
+            return { success: false, reason: `Invalid socket index ${socketIndex}. Total sockets: ${item.totalSockets}.` };
         }
-        if (item.socketedGems[socketIndex] !== null) {
+        if (item.socketedGems[socketIndex] !== null && item.socketedGems[socketIndex] !== undefined) {
             return { success: false, reason: "Socket is already occupied." };
         }
 
@@ -140,17 +146,43 @@ export class RunicSocketGemstoneEngine {
     }
 
     /**
+     * Extracts / unsockets a gemstone from a specific socket index.
+     */
+    public static removeGem(
+        item: SocketedGearItem,
+        socketIndex: number
+    ): { success: boolean; extractedGem?: GemstoneDefinition; reason?: string } {
+        if (!item || item.isDestroyed) return { success: false, reason: "Item is destroyed or invalid." };
+        item.socketedGems = Array.isArray(item.socketedGems) ? item.socketedGems : [];
+
+        if (socketIndex < 0 || socketIndex >= item.totalSockets) {
+            return { success: false, reason: "Invalid socket index." };
+        }
+
+        const existingGem = item.socketedGems[socketIndex];
+        if (!existingGem) {
+            return { success: false, reason: "No gemstone in specified socket." };
+        }
+
+        item.socketedGems[socketIndex] = null;
+        return { success: true, extractedGem: existingGem };
+    }
+
+    /**
      * Aggregates all active stats provided by inserted gemstones.
      */
     public static aggregateStats(item: SocketedGearItem): Record<string, number> {
-        if (item.isDestroyed) return {};
+        if (!item || item.isDestroyed) return {};
 
         const totals: Record<string, number> = {};
+        const gems = Array.isArray(item.socketedGems) ? item.socketedGems : [];
 
-        for (const gem of item.socketedGems) {
+        for (const gem of gems) {
             if (!gem) continue;
             const bonus = item.slot === "WEAPON" ? gem.weaponBonus : gem.armorBonus;
-            totals[bonus.stat] = (totals[bonus.stat] ?? 0) + bonus.value;
+            if (bonus && bonus.stat && Number.isFinite(bonus.value)) {
+                totals[bonus.stat] = (totals[bonus.stat] ?? 0) + bonus.value;
+            }
         }
 
         return totals;
