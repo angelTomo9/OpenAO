@@ -35,7 +35,7 @@ export class RunicSocketGemstoneEngine {
     public static readonly MAX_SOCKETS = 3;
 
     /**
-     * Creates a gemstone definition with scaled quality bonuses.
+     * Creates a gemstone definition with scaled quality bonuses, throwing fast on invalid runtime inputs.
      */
     public static createGem(gemType: GemstoneType, quality: GemstoneQuality): GemstoneDefinition {
         const mult = QUALITY_MULTIPLIERS[quality] ?? 1;
@@ -75,11 +75,13 @@ export class RunicSocketGemstoneEngine {
                     weaponBonus: { stat: "holyDamage", value: 7 * mult },
                     armorBonus: { stat: "physicalDefense", value: 5 * mult },
                 };
+            default:
+                throw new Error(`Unsupported or invalid gemstone type: ${String(gemType)}`);
         }
     }
 
     /**
-     * Attempts to chisel an additional socket into the item.
+     * Attempts to chisel an additional socket into the item, resetting sockets upon destruction.
      */
     public static chiselSocket(
         item: SocketedGearItem,
@@ -87,7 +89,7 @@ export class RunicSocketGemstoneEngine {
         rng: () => number = Math.random
     ): { success: boolean; totalSockets: number; itemDestroyed: boolean; reason?: string } {
         if (!item || item.isDestroyed) {
-            return { success: false, totalSockets: 0, itemDestroyed: true, reason: "Item is already destroyed or invalid." };
+            return { success: false, totalSockets: item?.totalSockets ?? 0, itemDestroyed: true, reason: "Item is already destroyed or invalid." };
         }
 
         item.socketedGems = Array.isArray(item.socketedGems) ? item.socketedGems : [];
@@ -116,6 +118,8 @@ export class RunicSocketGemstoneEngine {
         // Failed roll: If no protection scroll, 50% chance item is ruined
         if (!useProtectionScroll && rng() < 0.50) {
             item.isDestroyed = true;
+            item.totalSockets = 0;
+            item.socketedGems = [];
             return { success: false, totalSockets: 0, itemDestroyed: true, reason: "Chiseling failed catastrophically! Item was destroyed." };
         }
 

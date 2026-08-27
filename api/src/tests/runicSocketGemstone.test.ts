@@ -2,8 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
     RunicSocketGemstoneEngine,
     SocketedGearItem,
-    GemstoneType,
-    GemstoneQuality,
 } from "../lib/runicSocketGemstone.js";
 
 describe("RunicSocketGemstoneEngine Chiseling, Socketing, Extraction & Stat Aggregation", () => {
@@ -47,6 +45,12 @@ describe("RunicSocketGemstoneEngine Chiseling, Socketing, Extraction & Stat Aggr
         expect(stats.maxMana).toBe(60);
         expect(stats.criticalStrikeChance).toBe(7);
         expect(stats.maxStamina).toBe(20);
+    });
+
+    it("throws error for invalid runtime gemstone types", () => {
+        expect(() => RunicSocketGemstoneEngine.createGem("INVALID_GEM" as any, "PERFECT")).toThrow(
+            "Unsupported or invalid gemstone type"
+        );
     });
 
     it("extracts gemstone safely and clears socket slot", () => {
@@ -110,7 +114,7 @@ describe("RunicSocketGemstoneEngine Chiseling, Socketing, Extraction & Stat Aggr
         expect(armor.isDestroyed).toBeFalsy();
     });
 
-    it("destroys unprotected item upon catastrophic chisel failure", () => {
+    it("destroys unprotected item upon catastrophic chisel failure and clears sockets", () => {
         const item: SocketedGearItem = {
             itemId: "ring_01",
             slot: "ARMOR",
@@ -118,7 +122,6 @@ describe("RunicSocketGemstoneEngine Chiseling, Socketing, Extraction & Stat Aggr
             socketedGems: [null],
         };
 
-        // Failure roll 0.99 and destruction roll 0.10 (< 0.50)
         let rollCount = 0;
         const res = RunicSocketGemstoneEngine.chiselSocket(item, false, () => {
             rollCount++;
@@ -128,10 +131,11 @@ describe("RunicSocketGemstoneEngine Chiseling, Socketing, Extraction & Stat Aggr
         expect(res.success).toBe(false);
         expect(res.itemDestroyed).toBe(true);
         expect(item.isDestroyed).toBe(true);
+        expect(item.totalSockets).toBe(0);
 
-        // Cannot operate on destroyed item
         const afterRes = RunicSocketGemstoneEngine.chiselSocket(item, false);
         expect(afterRes.success).toBe(false);
+        expect(afterRes.totalSockets).toBe(0);
         expect(RunicSocketGemstoneEngine.aggregateStats(item)).toEqual({});
     });
 });
