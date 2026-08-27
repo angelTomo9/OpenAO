@@ -1,7 +1,8 @@
 /**
  * Arcane Disenchanting & Mystic Essence Extraction Forge Engine for OpenAO MMORPG.
  * Simulates the breakdown of enchanted weapons and armor into crafting essences,
- * scaling yields by item rarity tiers, enchanter skill proficiency, and critical extraction rolls.
+ * scaling yields by item rarity tiers, item enchantment power (+1..+10), enchanter skill proficiency,
+ * and critical extraction rolls.
  */
 
 export type ItemRarityTier = "COMMON" | "MAGIC" | "RARE" | "EPIC" | "LEGENDARY";
@@ -17,16 +18,24 @@ export interface DisenchantableItem {
     itemId: string;
     itemTemplateId: string;
     rarity: ItemRarityTier;
-    enchantmentPower: number; // e.g. +1 to +10
+    enchantmentPower?: number; // e.g. +1 to +10
 }
 
 export interface DisenchantResult {
     success: boolean;
     yields: DisenchantYield[];
+    totalArcaneDust: number;
     totalDustEquivalent: number;
     wasCriticalExtraction: boolean;
     reason?: string;
 }
+
+export const ESSENCE_DUST_VALUES: Record<EssenceType, number> = {
+    ARCANE_DUST: 1,
+    LESSER_MYSTIC_ESSENCE: 5,
+    GREATER_MYSTIC_ESSENCE: 15,
+    RADIANT_SHARD: 40,
+};
 
 export const RARITY_BASE_YIELDS: Record<ItemRarityTier, { dust: number; essence?: EssenceType; essenceQty: number }> = {
     COMMON: { dust: 2, essenceQty: 0 },
@@ -38,7 +47,7 @@ export const RARITY_BASE_YIELDS: Record<ItemRarityTier, { dust: number; essence?
 
 export class EnchantmentDisenchantForgeEngine {
     /**
-     * Disenchants an item into arcane components with skill scaling and critical bonus rolls.
+     * Disenchants an item into arcane components with power scaling, skill scaling, and critical bonus rolls.
      */
     public static disenchantItem(
         item: DisenchantableItem,
@@ -50,13 +59,20 @@ export class EnchantmentDisenchantForgeEngine {
             return {
                 success: false,
                 yields: [],
+                totalArcaneDust: 0,
                 totalDustEquivalent: 0,
                 wasCriticalExtraction: false,
                 reason: "Invalid item rarity.",
             };
         }
 
-        const skill = Math.min(100, Math.max(1, playerEnchantingSkill));
+        // Guard against NaN/infinite skill inputs
+        const rawSkill = Number.isFinite(playerEnchantingSkill) ? playerEnchantingSkill : 1;
+        const skill = Math.min(100, Math.max(1, rawSkill));
+
+        // Power multiplier: +10% per enchantment level
+        const power = Math.max(0, item.enchantmentPower ?? 0);
+        const powerFactor = 1.0 + power * 0.10;
 
         // Skill scaling factor: 1.0 at skill 1 up to 1.50 at skill 100
         const skillFactor = 1.0 + (skill / 100) * 0.50;
@@ -66,7 +82,7 @@ export class EnchantmentDisenchantForgeEngine {
         const wasCriticalExtraction = rng() < criticalChance;
 
         const critMultiplier = wasCriticalExtraction ? 2 : 1;
-        const dustQty = Math.floor(base.dust * skillFactor * critMultiplier);
+        const dustQty = Math.floor(base.dust * powerFactor * skillFactor * critMultiplier);
 
         const yields: DisenchantYield[] = [
             {
@@ -76,6 +92,8 @@ export class EnchantmentDisenchantForgeEngine {
             },
         ];
 
+        let totalEquivalent = dustQty * ESSENCE_DUST_VALUES.ARCANE_DUST;
+
         if (base.essence && base.essenceQty > 0) {
             const essenceQty = Math.max(1, Math.floor(base.essenceQty * (wasCriticalExtraction ? 2 : 1)));
             yields.push({
@@ -83,12 +101,14 @@ export class EnchantmentDisenchantForgeEngine {
                 quantity: essenceQty,
                 isCriticalBonus: wasCriticalExtraction,
             });
+            totalEquivalent += essenceQty * ESSENCE_DUST_VALUES[base.essence];
         }
 
         return {
             success: true,
             yields,
-            totalDustEquivalent: dustQty,
+            totalArcaneDust: dustQty,
+            totalDustEquivalent: totalEquivalent,
             wasCriticalExtraction,
         };
     }
