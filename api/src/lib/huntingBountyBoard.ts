@@ -1,7 +1,8 @@
 /**
  * Monster Hunting & Elite Beast Bounty Board Engine for OpenAO MMORPG.
- * Simulates radiant monster hunt contracts, party proximity credit verification (15 tiles),
- * contract progression tracking, and scaled gold/reputation reward distribution.
+ * Simulates radiant monster hunt contracts, contract validation & deduplication,
+ * party proximity credit verification (15 tiles), contract progression tracking,
+ * and scaled gold/reputation reward distribution.
  */
 
 export type BountyRank = "NORMAL" | "VETERAN" | "LEGENDARY_BEAST";
@@ -42,15 +43,38 @@ export class HuntingBountyBoardEngine {
     public static readonly PARTY_PROXIMITY_TILES = 15.0;
 
     /**
-     * Accepts a bounty contract for a player.
+     * Accepts a bounty contract for a player, validating contract integrity and deduplication.
      */
-    public static acceptContract(playerId: string, contractId: string): PlayerBountyProgress {
-        return {
-            contractId,
+    public static acceptContract(
+        playerId: string,
+        contract: BountyContract,
+        existingProgressList: PlayerBountyProgress[] = []
+    ): { success: boolean; progress?: PlayerBountyProgress; reason?: string } {
+        if (!contract || !contract.contractId) {
+            return { success: false, reason: "Invalid contract provided." };
+        }
+
+        const requiredKills = Math.max(1, contract.requiredKillCount ?? 1);
+
+        const alreadyAccepted = existingProgressList.some(
+            (p) => p.playerId === playerId && p.contractId === contract.contractId && !p.isClaimed
+        );
+
+        if (alreadyAccepted) {
+            return { success: false, reason: "Contract is already active for this player." };
+        }
+
+        const progress: PlayerBountyProgress = {
+            contractId: contract.contractId,
             playerId,
             currentKills: 0,
             isCompleted: false,
             isClaimed: false,
+        };
+
+        return {
+            success: true,
+            progress,
         };
     }
 
@@ -80,6 +104,7 @@ export class HuntingBountyBoardEngine {
         if (killedMonsterId !== contract.targetMonsterId) return [];
 
         const results: Array<{ playerId: string; updatedKills: number; isCompleted: boolean }> = [];
+        const requiredKills = Math.max(1, contract.requiredKillCount ?? 1);
 
         for (const progress of progressList) {
             if (progress.contractId !== contract.contractId || progress.isCompleted) continue;
@@ -89,8 +114,8 @@ export class HuntingBountyBoardEngine {
                 continue; // Too far from kill site or on different map
             }
 
-            progress.currentKills = Math.min(contract.requiredKillCount, progress.currentKills + 1);
-            if (progress.currentKills >= contract.requiredKillCount) {
+            progress.currentKills = Math.min(requiredKills, progress.currentKills + 1);
+            if (progress.currentKills >= requiredKills) {
                 progress.isCompleted = true;
             }
 

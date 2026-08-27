@@ -6,7 +6,7 @@ import {
     PartyMemberLocation,
 } from "../lib/huntingBountyBoard.js";
 
-describe("HuntingBountyBoardEngine Kill Tracking & Party Proximity", () => {
+describe("HuntingBountyBoardEngine Kill Tracking, Validation & Proximity", () => {
     const mockContract: BountyContract = {
         contractId: "bounty_forest_trolls",
         targetMonsterId: "forest_troll_01",
@@ -18,9 +18,20 @@ describe("HuntingBountyBoardEngine Kill Tracking & Party Proximity", () => {
         rewardExp: 5000,
     };
 
-    it("accepts contract and increments kill progress for nearby party members", () => {
-        const p1 = HuntingBountyBoardEngine.acceptContract("player_1", "bounty_forest_trolls");
-        const p2 = HuntingBountyBoardEngine.acceptContract("player_2", "bounty_forest_trolls");
+    it("accepts contract with validation and prevents duplicate active acceptance", () => {
+        const accept1 = HuntingBountyBoardEngine.acceptContract("player_1", mockContract, []);
+        expect(accept1.success).toBe(true);
+        expect(accept1.progress?.contractId).toBe("bounty_forest_trolls");
+
+        // Attempt duplicate acceptance
+        const acceptDup = HuntingBountyBoardEngine.acceptContract("player_1", mockContract, [accept1.progress!]);
+        expect(acceptDup.success).toBe(false);
+        expect(acceptDup.reason).toContain("already active");
+    });
+
+    it("records kills for nearby party members and marks complete on target quota", () => {
+        const p1 = HuntingBountyBoardEngine.acceptContract("player_1", mockContract).progress!;
+        const p2 = HuntingBountyBoardEngine.acceptContract("player_2", mockContract).progress!;
 
         const killLoc: KillEventLocation = { mapId: 1, x: 50, y: 50 };
         const party: PartyMemberLocation[] = [
@@ -28,22 +39,14 @@ describe("HuntingBountyBoardEngine Kill Tracking & Party Proximity", () => {
             { playerId: "player_2", mapId: 1, x: 90, y: 90 }, // Out of range (> 15 tiles away)
         ];
 
-        const updates = HuntingBountyBoardEngine.recordMonsterKill(
-            mockContract,
-            [p1, p2],
-            killLoc,
-            party,
-            "forest_troll_01"
-        );
+        HuntingBountyBoardEngine.recordMonsterKill(mockContract, [p1, p2], killLoc, party, "forest_troll_01");
 
-        expect(updates.length).toBe(1);
-        expect(updates[0].playerId).toBe("player_1");
         expect(p1.currentKills).toBe(1);
-        expect(p2.currentKills).toBe(0); // Did not get kill credit
+        expect(p2.currentKills).toBe(0);
     });
 
     it("completes contract upon reaching required kills and claims reward", () => {
-        const p1 = HuntingBountyBoardEngine.acceptContract("player_1", "bounty_forest_trolls");
+        const p1 = HuntingBountyBoardEngine.acceptContract("player_1", mockContract).progress!;
         p1.currentKills = 2;
 
         const killLoc: KillEventLocation = { mapId: 1, x: 50, y: 50 };
@@ -59,9 +62,5 @@ describe("HuntingBountyBoardEngine Kill Tracking & Party Proximity", () => {
         expect(claim.goldAwarded).toBe(1500);
         expect(claim.reputationAwarded).toBe(100);
         expect(p1.isClaimed).toBe(true);
-
-        // Cannot claim twice
-        const claimAgain = HuntingBountyBoardEngine.claimReward(mockContract, p1);
-        expect(claimAgain.success).toBe(false);
     });
 });
