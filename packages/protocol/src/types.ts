@@ -25,24 +25,24 @@ export interface CharacterStats {
 }
 
 export interface ClientWalkPacket {
-  packetId: typeof ClientPacketId[keyof typeof ClientPacketId];
+  packetId: ClientPacketId;
   heading: Heading;
 }
 
 export interface ClientTalkPacket {
-  packetId: typeof ClientPacketId[keyof typeof ClientPacketId];
+  packetId: ClientPacketId;
   message: string;
 }
 
 export interface ServerChatMessagePacket {
-  packetId: typeof ServerPacketId[keyof typeof ServerPacketId];
+  packetId: ServerPacketId;
   sender: string;
   message: string;
   color: string;
 }
 
 export interface ServerUserPositionPacket {
-  packetId: typeof ServerPacketId[keyof typeof ServerPacketId];
+  packetId: ServerPacketId;
   x: number;
   y: number;
 }
