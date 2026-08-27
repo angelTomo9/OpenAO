@@ -1,7 +1,7 @@
 /**
  * Alchemy Brewing Cauldron & Potion Purity Simulation Engine for OpenAO MMORPG.
  * Simulates interactive reagent additions, heat control (Underheated, Optimal, Overheated),
- * stirring stabilization cycles, and output potion purity tiering.
+ * stirring stabilization cycles, skill-scaled purity, and output potion quality tiering.
  */
 
 export type HeatLevel = "UNDERHEATED" | "OPTIMAL" | "OVERHEATED";
@@ -143,8 +143,10 @@ export class AlchemyBrewingCauldronEngine {
             };
         }
 
-        // Calculate Purity score: Base 100
-        let purity = 100;
+        // Calculate Purity score: Base starts with skill modifier
+        // Skill gives up to +10 bonus purity for master alchemists (skill 100) vs novice
+        const skillBonus = Math.floor((skill - recipe.minAlchemySkill) / 5);
+        let purity = 100 + skillBonus;
 
         // Stirring accuracy penalty
         if (session.lastStirDirection !== recipe.requiredStirDirection) {
@@ -153,7 +155,11 @@ export class AlchemyBrewingCauldronEngine {
         const stirDiff = Math.abs(session.completedStirCycles - recipe.requiredStirCycles);
         purity -= stirDiff * 10;
 
-        // Heat penalty
+        // Heat penalty: If optimal heat was NEVER applied, heavily penalize cold brew (-50)
+        if (session.heatExposureTicks.optimal === 0) {
+            purity -= 50;
+        }
+
         const badHeatTicks = session.heatExposureTicks.overheated * 15 + session.heatExposureTicks.underheated * 5;
         purity -= badHeatTicks;
 
