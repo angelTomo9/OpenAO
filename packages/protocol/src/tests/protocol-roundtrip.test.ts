@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { CLIENT_PACKET_ID, SERVER_PACKET_ID } from "../opcodes";
 import { PROTOCOL_CONSTANTS, HEADING } from "../constants";
+import {
+  ClientWalkPacket,
+  ClientTalkPacket,
+  ServerChatMessagePacket,
+  ServerUserPositionPacket,
+} from "../types";
 
 describe("Unified Protocol Serialization & Integrity (Issue #28)", () => {
   it("Opcodes are unique and well-defined across client packets", () => {
@@ -27,5 +33,36 @@ describe("Unified Protocol Serialization & Integrity (Issue #28)", () => {
     expect(HEADING.EAST).toBe(2);
     expect(HEADING.SOUTH).toBe(3);
     expect(HEADING.WEST).toBe(4);
+  });
+
+  it("Strongly typed packets instantiate and validate correctly", () => {
+    const walk: ClientWalkPacket = {
+      packetId: CLIENT_PACKET_ID.walk,
+      heading: HEADING.NORTH,
+    };
+    expect(walk.packetId).toBe(4);
+    expect(walk.heading).toBe(1);
+
+    const talk: ClientTalkPacket = {
+      packetId: CLIENT_PACKET_ID.talk,
+      message: "Hello world",
+    };
+    expect(talk.packetId).toBe(2);
+    expect(talk.message).toBe("Hello world");
+
+    const chat: ServerChatMessagePacket = {
+      packetId: SERVER_PACKET_ID.chatMessage,
+      sender: "System",
+      message: "Server rebooting",
+      color: "#FFFFFF",
+    };
+    expect(chat.packetId).toBe(4);
+
+    const pos: ServerUserPositionPacket = {
+      packetId: SERVER_PACKET_ID.userPositionUpdate,
+      x: 50,
+      y: 50,
+    };
+    expect(pos.packetId).toBe(5);
   });
 });
