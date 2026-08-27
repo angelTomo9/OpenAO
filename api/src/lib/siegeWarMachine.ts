@@ -1,7 +1,7 @@
 /**
  * Guild Siege War Machine & Fortification Assault Engine for OpenAO MMORPG.
  * Simulates deployment of Catapults, Ballistas, and Battering Rams, ammunition damage modifiers,
- * fortification gate armor penetration, and operator crew attachment mechanics.
+ * fortification gate armor penetration, reload timers enforcement, and operator crew attachment mechanics.
  */
 
 export type SiegeMachineType = "CATAPULT" | "BALLISTA" | "BATTERING_RAM";
@@ -32,6 +32,8 @@ export interface SiegeAttackResult {
     isTargetDestroyed: boolean;
     remainingStructureHp: number;
     wasEffectiveMaterialBonus: boolean;
+    isOnCooldown?: boolean;
+    reason?: string;
 }
 
 export const SIEGE_MACHINE_SPECS: Record<SiegeMachineType, SiegeMachineDefinition> = {
@@ -98,7 +100,7 @@ export class SiegeWarMachineEngine {
     }
 
     /**
-     * Executes a siege engine strike against a fortification structure.
+     * Executes a siege engine strike against a fortification structure, enforcing reload cooldowns.
      */
     public static fireAtStructure(
         machine: ActiveSiegeMachine,
@@ -108,8 +110,22 @@ export class SiegeWarMachineEngine {
         currentEpochMs: number
     ): SiegeAttackResult {
         const spec = SIEGE_MACHINE_SPECS[machine.machineType];
-        const ammo = machine.loadedAmmo ?? spec.supportedAmmo[0];
 
+        // Enforce reload cooldown
+        const reloadMs = spec.reloadTimeSeconds * 1000;
+        if (machine.lastFiredEpochMs > 0 && currentEpochMs - machine.lastFiredEpochMs < reloadMs) {
+            const remainingCooldown = reloadMs - (currentEpochMs - machine.lastFiredEpochMs);
+            return {
+                damageDealt: 0,
+                isTargetDestroyed: false,
+                remainingStructureHp: targetStructureHp,
+                wasEffectiveMaterialBonus: false,
+                isOnCooldown: true,
+                reason: `Machine is currently reloading. Cooldown remaining: ${Math.ceil(remainingCooldown / 1000)}s.`,
+            };
+        }
+
+        const ammo = machine.loadedAmmo ?? spec.supportedAmmo[0];
         const { multiplier, isBonus } = this.getMaterialDamageMultiplier(ammo, targetMaterial);
 
         // Armor mitigation formula: RawDamage * (100 / (100 + armor))
@@ -125,6 +141,7 @@ export class SiegeWarMachineEngine {
             isTargetDestroyed: remainingHp === 0,
             remainingStructureHp: remainingHp,
             wasEffectiveMaterialBonus: isBonus,
+            isOnCooldown: false,
         };
     }
 }
