@@ -57,6 +57,7 @@ describe("UnderworldDungeonPortalEngine Keystone Attunement & Instance Lifecycle
 
     it("awards GOLD_CHEST for fast dungeon clear within time limits", () => {
         const instance = UnderworldDungeonPortalEngine.openPortal(mockKeystone, leader, party, 100000).instance!;
+        // 30 min dungeon duration = 1,800,000 ms. Expires at 1,900,000.
         instance.isCompleted = true;
 
         // Clear at 200,000 (only 100,000 ms elapsed -> >60% time remaining)
