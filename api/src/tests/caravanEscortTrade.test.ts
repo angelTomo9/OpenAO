@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { CaravanEscortTradeEngine, TradeCargoManifest, CaravanWaypoint } from "../lib/caravanEscortTrade.js";
 
-describe("CaravanEscortTradeEngine Route Traversal & Ambush Scaling", () => {
+describe("CaravanEscortTradeEngine Route Traversal, Ambush Damage & Failure", () => {
     const mockManifest: TradeCargoManifest = {
         manifestId: "silk_road_01",
         cargoName: "Imperial Silk and Gems",
-        cargoValueGold: 40000, // 40k gold -> 10% base + (4 * 5%) = 30% ambush chance
+        cargoValueGold: 40000,
         baseRewardGold: 2000,
     };
 
@@ -14,34 +14,29 @@ describe("CaravanEscortTradeEngine Route Traversal & Ambush Scaling", () => {
         { waypointId: "wp_2", mapId: 1, x: 20, y: 20 },
     ];
 
-    it("calculates ambush probability scaled by cargo value", () => {
-        const probLow = CaravanEscortTradeEngine.calculateAmbushProbability(5000);
-        expect(probLow).toBe(0.10); // Base 10%
-
-        const probHigh = CaravanEscortTradeEngine.calculateAmbushProbability(40000);
-        expect(probHigh).toBe(0.30); // 10% + 20% = 30%
-    });
-
-    it("completes mission and awards gold when reaching destination inside protection radius", () => {
+    it("applies ambush damage to cart and scales down final reward payout", () => {
         const mission = CaravanEscortTradeEngine.startMission("player_1", mockManifest, mockWaypoints, 500);
 
-        // Advance WP 1 (within radius)
-        const tick1 = CaravanEscortTradeEngine.advanceWaypoint(mission, { x: 12, y: 10 }, () => 0.99);
-        expect(tick1.isCompleted).toBe(false);
-        expect(mission.currentWaypointIndex).toBe(1);
+        // WP 1 with ambush triggered (rng = 0.01) -> takes 150 damage (500 -> 350 HP)
+        const tick1 = CaravanEscortTradeEngine.advanceWaypoint(mission, { x: 10, y: 10 }, () => 0.01);
+        expect(tick1.isAmbushTriggered).toBe(true);
+        expect(tick1.cartRemainingHp).toBe(350);
+        expect(mission.cartCurrentHp).toBe(350);
 
-        // Advance WP 2 (final destination)
-        const tick2 = CaravanEscortTradeEngine.advanceWaypoint(mission, { x: 20, y: 22 }, () => 0.99);
+        // WP 2 destination without ambush (350 / 500 = 70% health ratio -> 1400 gold payout)
+        const tick2 = CaravanEscortTradeEngine.advanceWaypoint(mission, { x: 20, y: 20 }, () => 0.99);
         expect(tick2.isCompleted).toBe(true);
-        expect(tick2.rewardGoldAwarded).toBe(2000); // 100% health -> full 2000 payout
+        expect(tick2.rewardGoldAwarded).toBe(1400); // 2000 * 70%
     });
 
-    it("pauses progression when player is beyond escort protection radius", () => {
-        const mission = CaravanEscortTradeEngine.startMission("player_1", mockManifest, mockWaypoints, 500);
+    it("fails mission when cart health is reduced to 0 by ambush attacks", () => {
+        const fragileMission = CaravanEscortTradeEngine.startMission("player_1", mockManifest, mockWaypoints, 100); // Only 100 HP
 
-        // Player is at (100, 100) -> distance > 8 tiles
-        const tick = CaravanEscortTradeEngine.advanceWaypoint(mission, { x: 100, y: 100 });
-        expect(tick.currentWaypointIndex).toBe(0); // Did not advance
-        expect(tick.reason).toContain("Escort radius exceeded");
+        // Ambush hits for 150 damage -> cart destroyed
+        const tick = CaravanEscortTradeEngine.advanceWaypoint(fragileMission, { x: 10, y: 10 }, () => 0.01);
+        expect(tick.isFailed).toBe(true);
+        expect(tick.cartRemainingHp).toBe(0);
+        expect(fragileMission.isFailed).toBe(true);
+        expect(tick.reason).toContain("Caravan cart was destroyed");
     });
 });

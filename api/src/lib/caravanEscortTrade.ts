@@ -1,7 +1,7 @@
 /**
  * Overland Trade Caravan Escort & Dynamic Ambush Mission Engine for OpenAO MMORPG.
  * Simulates route waypoint progression, cargo-value-scaled bandit ambush probabilities,
- * escort player protection radius enforcement, and milestone gold delivery rewards.
+ * escort player protection radius enforcement, cart damage and mission failure, and milestone gold delivery rewards.
  */
 
 export interface CaravanWaypoint {
@@ -34,6 +34,7 @@ export interface CaravanTickResult {
     missionId: string;
     currentWaypointIndex: number;
     isAmbushTriggered: boolean;
+    cartRemainingHp: number;
     isCompleted: boolean;
     isFailed: boolean;
     rewardGoldAwarded?: number;
@@ -42,6 +43,7 @@ export interface CaravanTickResult {
 
 export class CaravanEscortTradeEngine {
     public static readonly ESCORT_PROTECTION_RADIUS = 8.0; // 8 tiles
+    public static readonly AMBUSH_DAMAGE_PER_HIT = 150;
 
     /**
      * Initializes an active caravan escort mission.
@@ -77,7 +79,8 @@ export class CaravanEscortTradeEngine {
     }
 
     /**
-     * Advances caravan to next waypoint if player is within the escort protection radius.
+     * Advances caravan to next waypoint if player is within the escort protection radius,
+     * applying bandit damage upon ambush and triggering mission failure if the cart is destroyed.
      */
     public static advanceWaypoint(
         state: CaravanMissionState,
@@ -89,6 +92,7 @@ export class CaravanEscortTradeEngine {
                 missionId: state.missionId,
                 currentWaypointIndex: state.currentWaypointIndex,
                 isAmbushTriggered: false,
+                cartRemainingHp: state.cartCurrentHp,
                 isCompleted: state.isCompleted,
                 isFailed: state.isFailed,
                 reason: "Mission is already concluded.",
@@ -102,6 +106,7 @@ export class CaravanEscortTradeEngine {
                 missionId: state.missionId,
                 currentWaypointIndex: state.currentWaypointIndex,
                 isAmbushTriggered: false,
+                cartRemainingHp: state.cartCurrentHp,
                 isCompleted: true,
                 isFailed: false,
             };
@@ -117,15 +122,32 @@ export class CaravanEscortTradeEngine {
                 missionId: state.missionId,
                 currentWaypointIndex: state.currentWaypointIndex,
                 isAmbushTriggered: false,
+                cartRemainingHp: state.cartCurrentHp,
                 isCompleted: false,
                 isFailed: false,
                 reason: "Player is too far from caravan cart! Escort radius exceeded.",
             };
         }
 
-        // Roll ambush check
+        // Roll ambush check and apply cart integrity damage
         const ambushChance = this.calculateAmbushProbability(state.manifest.cargoValueGold);
         const isAmbushTriggered = rng() < ambushChance;
+
+        if (isAmbushTriggered) {
+            state.cartCurrentHp = Math.max(0, state.cartCurrentHp - this.AMBUSH_DAMAGE_PER_HIT);
+            if (state.cartCurrentHp <= 0) {
+                state.isFailed = true;
+                return {
+                    missionId: state.missionId,
+                    currentWaypointIndex: state.currentWaypointIndex,
+                    isAmbushTriggered: true,
+                    cartRemainingHp: 0,
+                    isCompleted: false,
+                    isFailed: true,
+                    reason: "Caravan cart was destroyed by bandits! Mission failed.",
+                };
+            }
+        }
 
         state.currentWaypointIndex += 1;
 
@@ -140,6 +162,7 @@ export class CaravanEscortTradeEngine {
                 missionId: state.missionId,
                 currentWaypointIndex: state.currentWaypointIndex,
                 isAmbushTriggered,
+                cartRemainingHp: state.cartCurrentHp,
                 isCompleted: true,
                 isFailed: false,
                 rewardGoldAwarded: payout,
@@ -150,6 +173,7 @@ export class CaravanEscortTradeEngine {
             missionId: state.missionId,
             currentWaypointIndex: state.currentWaypointIndex,
             isAmbushTriggered,
+            cartRemainingHp: state.cartCurrentHp,
             isCompleted: false,
             isFailed: false,
         };
