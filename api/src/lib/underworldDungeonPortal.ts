@@ -1,7 +1,8 @@
 /**
  * Instanced Underworld Dungeon Portal & Keystone Attunement Engine for OpenAO MMORPG.
- * Simulates opening instanced portals, verifying party attunement keys, tracking instance expiration,
- * boss chamber lockouts, and awarding time-scaled reward chests.
+ * Simulates opening instanced portals, party deduplication, keystone level difficulty scaling,
+ * verifying party attunement keys, tracking instance expiration, boss chamber lockouts,
+ * and awarding time-scaled reward chests.
  */
 
 export type DungeonDifficulty = "NORMAL" | "HEROIC" | "MYTHIC_KEYSTONE";
@@ -20,7 +21,7 @@ export interface KeystoneItem {
     keystoneId: string;
     dungeonId: string;
     difficulty: DungeonDifficulty;
-    levelModifier: number; // e.g. +2 to +15
+    levelModifier?: number; // e.g. +2 to +15 for Mythic Keystone timers
 }
 
 export interface DungeonPartyMember {
@@ -33,6 +34,7 @@ export interface ActiveDungeonInstance {
     instanceId: string;
     dungeonId: string;
     difficulty: DungeonDifficulty;
+    levelModifier: number;
     leaderPlayerId: string;
     partyMembers: string[];
     openedAtEpochMs: number;
@@ -70,7 +72,7 @@ export class UnderworldDungeonPortalEngine {
     public static openPortal(
         keystone: KeystoneItem,
         leader: DungeonPartyMember,
-        party: DungeonPartyMember[],
+        party: DungeonPartyMember[] = [],
         currentEpochMs = Date.now()
     ): { success: boolean; instance?: ActiveDungeonInstance; reason?: string } {
         if (!keystone || !keystone.dungeonId) {
@@ -82,7 +84,14 @@ export class UnderworldDungeonPortalEngine {
             return { success: false, reason: `Unknown dungeon: ${keystone.dungeonId}` };
         }
 
-        const allMembers = [leader, ...party.filter((p) => p.playerId !== leader.playerId)];
+        // Deduplicate party members by playerId
+        const memberMap = new Map<string, DungeonPartyMember>();
+        if (leader && leader.playerId) memberMap.set(leader.playerId, leader);
+        for (const p of party) {
+            if (p && p.playerId) memberMap.set(p.playerId, p);
+        }
+
+        const allMembers = Array.from(memberMap.values());
         if (allMembers.length > dungeon.maxPartySize) {
             return { success: false, reason: `Party exceeds maximum capacity of ${dungeon.maxPartySize} players.` };
         }
@@ -96,11 +105,17 @@ export class UnderworldDungeonPortalEngine {
             }
         }
 
-        const durationMs = dungeon.baseDurationMinutes * 60 * 1000;
+        // Factor levelModifier into instance duration: tightens timer by 1 min per +2 key levels
+        const levelMod = Math.max(0, keystone.levelModifier ?? 0);
+        const timeReductionMin = keystone.difficulty === "MYTHIC_KEYSTONE" ? Math.floor(levelMod / 2) : 0;
+        const finalDurationMinutes = Math.max(10, dungeon.baseDurationMinutes - timeReductionMin);
+        const durationMs = finalDurationMinutes * 60 * 1000;
+
         const instance: ActiveDungeonInstance = {
             instanceId: `inst_${keystone.dungeonId}_${currentEpochMs}`,
             dungeonId: dungeon.dungeonId,
             difficulty: keystone.difficulty,
+            levelModifier: levelMod,
             leaderPlayerId: leader.playerId,
             partyMembers: allMembers.map((m) => m.playerId),
             openedAtEpochMs: currentEpochMs,
@@ -147,7 +162,7 @@ export class UnderworldDungeonPortalEngine {
 
         if (action === "DEFEAT_BOSS") {
             instance.defeatedBosses = Math.min(instance.totalBosses, instance.defeatedBosses + 1);
-            instance.isBossChamberLocked = false;
+            instance.isBossChamberLocked = false; // Chamber unlocks upon boss defeat
 
             if (instance.defeatedBosses >= instance.totalBosses) {
                 instance.isCompleted = true;
