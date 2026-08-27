@@ -69,7 +69,7 @@ export class AlchemyTinctureInfusionEngine {
     public static readonly MAX_TOXICITY_THRESHOLD = 100;
 
     /**
-     * Brews a tincture flask session into a final potency tincture.
+     * Brews a tincture flask session into a final potency tincture with unique IDs.
      */
     public static brewTincture(
         session: InfusionFlaskSession
@@ -112,8 +112,9 @@ export class AlchemyTinctureInfusionEngine {
         const finalPotency = Math.floor(recipe.basePotency * solventMod.potencyMultiplier * timeFactor * skillFactor);
         const finalToxicity = recipe.baseToxicityPoints + solventMod.addedToxicity;
 
+        const uniqueSuffix = Math.random().toString(36).substring(2, 8);
         const tincture: BrewedTincture = {
-            tinctureId: `tincture_${session.recipeId}_${Date.now()}`,
+            tinctureId: `tincture_${session.recipeId}_${Date.now()}_${uniqueSuffix}`,
             recipeId: recipe.recipeId,
             potencyPercent: finalPotency,
             toxicityPoints: finalToxicity,
@@ -129,7 +130,7 @@ export class AlchemyTinctureInfusionEngine {
     }
 
     /**
-     * Simulates a player consuming a tincture, accumulating toxicity.
+     * Simulates a player consuming a tincture, accumulating toxicity up to max 100.
      */
     public static consumeTincture(
         player: PlayerToxicityState,
@@ -140,7 +141,7 @@ export class AlchemyTinctureInfusionEngine {
         }
 
         const toxicityIncrease = Number.isFinite(tincture.toxicityPoints) ? Math.max(0, tincture.toxicityPoints) : 0;
-        player.currentToxicity = Math.min(this.MAX_TOXICITY_THRESHOLD + 20, player.currentToxicity + toxicityIncrease);
+        player.currentToxicity = Math.min(this.MAX_TOXICITY_THRESHOLD, player.currentToxicity + toxicityIncrease);
 
         if (player.currentToxicity >= this.MAX_TOXICITY_THRESHOLD) {
             player.isToxicShock = true;
@@ -155,7 +156,7 @@ export class AlchemyTinctureInfusionEngine {
     }
 
     /**
-     * Administers an herbal antidote, purging bloodstream toxicity.
+     * Administers an herbal antidote, purging bloodstream toxicity and tracking state transition.
      */
     public static applyAntidote(
         player: PlayerToxicityState,
@@ -165,6 +166,7 @@ export class AlchemyTinctureInfusionEngine {
             return { success: false, toxicityPurged: 0, remainingToxicity: 0, shockCleared: false };
         }
 
+        const hadShock = player.isToxicShock;
         const cleanse = Number.isFinite(cleanseAmount) ? Math.max(0, Math.floor(cleanseAmount)) : 0;
         const actualPurged = Math.min(player.currentToxicity, cleanse);
 
@@ -173,11 +175,13 @@ export class AlchemyTinctureInfusionEngine {
             player.isToxicShock = false;
         }
 
+        const shockCleared = hadShock && !player.isToxicShock;
+
         return {
             success: true,
             toxicityPurged: actualPurged,
             remainingToxicity: player.currentToxicity,
-            shockCleared: !player.isToxicShock,
+            shockCleared,
         };
     }
 }

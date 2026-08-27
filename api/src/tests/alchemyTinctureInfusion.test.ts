@@ -6,23 +6,23 @@ import {
 } from "../lib/alchemyTinctureInfusion.js";
 
 describe("AlchemyTinctureInfusionEngine Brewing, Potency & Toxicity Mechanics", () => {
-    it("brews Tincture of Clarity in Moonwell Dew with high skill bonus", () => {
+    it("brews Tincture of Clarity in Moonwell Dew with unique ID and high skill bonus", () => {
         const session: InfusionFlaskSession = {
             sessionId: "sess_01",
             recipeId: "tincture_of_clarity",
             solvent: "MOONWELL_DEW",
             herb: "STARLIGHT_LOTUS",
-            steepDurationSeconds: 15, // Optimal
-            alchemistSkill: 100,      // Max skill
+            steepDurationSeconds: 15,
+            alchemistSkill: 100,
             isBrewed: false,
         };
 
         const brewRes = AlchemyTinctureInfusionEngine.brewTincture(session);
         expect(brewRes.success).toBe(true);
         expect(brewRes.tincture?.isBurned).toBe(false);
-        // Base 50 * 1.4 solvent * 1.0 time * 1.30 skill = 91% potency
         expect(brewRes.tincture?.potencyPercent).toBe(91);
-        expect(brewRes.tincture?.toxicityPoints).toBe(15); // 10 base + 5 moonwell
+        expect(brewRes.tincture?.toxicityPoints).toBe(15);
+        expect(brewRes.tincture?.tinctureId).toContain("tincture_tincture_of_clarity_");
     });
 
     it("penalizes over-steeped burned tinctures", () => {
@@ -31,7 +31,7 @@ describe("AlchemyTinctureInfusionEngine Brewing, Potency & Toxicity Mechanics", 
             recipeId: "tincture_of_clarity",
             solvent: "SPRING_WATER",
             herb: "STARLIGHT_LOTUS",
-            steepDurationSeconds: 40, // > 30s (2x optimal 15) -> Burned
+            steepDurationSeconds: 40,
             alchemistSkill: 20,
             isBrewed: false,
         };
@@ -42,7 +42,7 @@ describe("AlchemyTinctureInfusionEngine Brewing, Potency & Toxicity Mechanics", 
         expect(res.tincture?.potencyPercent).toBeLessThan(15);
     });
 
-    it("accumulates toxicity and triggers toxic shock at threshold", () => {
+    it("accumulates toxicity clamped to max 100 and triggers toxic shock", () => {
         const player: PlayerToxicityState = { playerId: "hero_1", currentToxicity: 85, isToxicShock: false };
         const toxicTincture = {
             tinctureId: "t_1",
@@ -52,20 +52,25 @@ describe("AlchemyTinctureInfusionEngine Brewing, Potency & Toxicity Mechanics", 
             isBurned: false,
         };
 
-        // 85 + 25 = 110 (>= 100 threshold) -> Toxic shock
         const consumeRes = AlchemyTinctureInfusionEngine.consumeTincture(player, toxicTincture);
         expect(consumeRes.isToxicShock).toBe(true);
-        expect(player.currentToxicity).toBe(110);
+        expect(player.currentToxicity).toBe(100); // Clamped strictly to 100
     });
 
-    it("purges toxicity and clears toxic shock with antidote", () => {
-        const player: PlayerToxicityState = { playerId: "hero_1", currentToxicity: 105, isToxicShock: true };
+    it("purges toxicity and accurately tracks shockCleared state transition", () => {
+        const playerInShock: PlayerToxicityState = { playerId: "hero_1", currentToxicity: 100, isToxicShock: true };
 
-        const antidoteRes = AlchemyTinctureInfusionEngine.applyAntidote(player, 50);
+        const antidoteRes = AlchemyTinctureInfusionEngine.applyAntidote(playerInShock, 50);
         expect(antidoteRes.success).toBe(true);
-        expect(antidoteRes.remainingToxicity).toBe(55);
-        expect(antidoteRes.shockCleared).toBe(true);
-        expect(player.isToxicShock).toBe(false);
+        expect(antidoteRes.remainingToxicity).toBe(50);
+        expect(antidoteRes.shockCleared).toBe(true); // Shock transitioned from true to false
+        expect(playerInShock.isToxicShock).toBe(false);
+
+        // Applying antidote when player has no shock returns shockCleared: false
+        const playerNoShock: PlayerToxicityState = { playerId: "hero_2", currentToxicity: 30, isToxicShock: false };
+        const res2 = AlchemyTinctureInfusionEngine.applyAntidote(playerNoShock, 20);
+        expect(res2.shockCleared).toBe(false);
+        expect(playerNoShock.currentToxicity).toBe(10);
     });
 
     it("guards defensively against herb mismatch and invalid sessions", () => {
@@ -73,7 +78,7 @@ describe("AlchemyTinctureInfusionEngine Brewing, Potency & Toxicity Mechanics", 
             sessionId: "sess_03",
             recipeId: "tincture_of_clarity",
             solvent: "SPRING_WATER",
-            herb: "NIGHTSHADE_PETAL", // Wrong herb
+            herb: "NIGHTSHADE_PETAL",
             steepDurationSeconds: 15,
             alchemistSkill: 50,
             isBrewed: false,
