@@ -148,7 +148,7 @@ export class RunicGolemCraftingEngine {
     }
 
     /**
-     * Self-repairs the golem based on elapsed time and elemental core healing rate.
+     * Self-repairs the golem based on elapsed time, accurately carrying fractional seconds across ticks.
      */
     public static performSelfRepair(
         golem: ConstructedRunicGolem,
@@ -160,13 +160,16 @@ export class RunicGolemCraftingEngine {
 
         const core = ELEMENTAL_CORE_CATALOG[golem.coreType];
         const elapsedSeconds = Math.max(0, (currentEpochMs - golem.lastSelfRepairEpochMs) / 1000);
-        golem.lastSelfRepairEpochMs = currentEpochMs;
 
         const maxRepair = Math.floor(elapsedSeconds * core.repairRatePerSecond);
         const missingHp = golem.maxHp - golem.currentHp;
         const actualRepair = Math.min(missingHp, maxRepair);
 
-        golem.currentHp += actualRepair;
+        if (actualRepair > 0) {
+            const secondsConsumed = actualRepair / core.repairRatePerSecond;
+            golem.lastSelfRepairEpochMs += Math.round(secondsConsumed * 1000);
+            golem.currentHp += actualRepair;
+        }
 
         return {
             repairedHp: actualRepair,

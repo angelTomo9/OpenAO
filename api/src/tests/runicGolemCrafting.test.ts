@@ -47,15 +47,18 @@ describe("RunicGolemCraftingEngine Construction, Patrol & Combat Mechanics", () 
         expect(outRes.reason).toContain("outside golem patrol perimeter");
     });
 
-    it("performs self-repair over elapsed time using core rate", () => {
+    it("performs self-repair over elapsed time and carries sub-second fractions across ticks", () => {
         const golem = RunicGolemCraftingEngine.constructGolem("p", "GRANITE", "EARTH_CORE", 0, 0, 30, 100000);
         golem.currentHp = 1000; // Damaged from 2000 (1500 + 500)
         golem.lastSelfRepairEpochMs = 100000;
 
-        // Advance 20 seconds (20s * 10 hp/s Earth Core = 200 hp repair)
-        const repairRes = RunicGolemCraftingEngine.performSelfRepair(golem, 120000);
-        expect(repairRes.repairedHp).toBe(200);
-        expect(golem.currentHp).toBe(1200);
+        // Poll at 50ms intervals with 10 HP/s rate (0.5 HP per tick) -> After 2 ticks (100ms), heals 1 HP
+        RunicGolemCraftingEngine.performSelfRepair(golem, 100050);
+        expect(golem.currentHp).toBe(1000);
+
+        const repairTick2 = RunicGolemCraftingEngine.performSelfRepair(golem, 100100);
+        expect(repairTick2.repairedHp).toBe(1);
+        expect(golem.currentHp).toBe(1001);
     });
 
     it("guards against invalid chassis and core enums", () => {
