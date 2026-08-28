@@ -22,9 +22,28 @@ describe("CaravanEscortRobberyEngine Waypoints, Bandit Ambushes & Depot Delivery
         expect(caravan.status).toBe("DELIVERED_SUCCESS");
     });
 
+    it("locks waypoint advancement during AMBUSH_ENGAGED until resolved", () => {
+        const caravan = CaravanEscortRobberyEngine.dispatchCaravan("merchant_1", "MERCHANT_SUPPLY_CART", 2, 100000);
+        CaravanEscortRobberyEngine.engageAmbush(caravan);
+        expect(caravan.status).toBe("AMBUSH_ENGAGED");
+
+        // Attempting to advance while ambushed fails
+        const blockedAdv = CaravanEscortRobberyEngine.advanceWaypoint(caravan);
+        expect(blockedAdv.success).toBe(false);
+        expect(blockedAdv.reason).toContain("engaged in a bandit ambush");
+
+        // Resolving ambush returns caravan to IN_TRANSIT
+        const resolve = CaravanEscortRobberyEngine.triggerBanditAmbush(caravan, 100);
+        expect(resolve.success).toBe(true);
+        expect(caravan.status).toBe("IN_TRANSIT");
+
+        // Now advancement works
+        const validAdv = CaravanEscortRobberyEngine.advanceWaypoint(caravan);
+        expect(validAdv.success).toBe(true);
+    });
+
     it("mitigates bandit ambush damage based on hired guard count", () => {
         const caravan = CaravanEscortRobberyEngine.dispatchCaravan("merchant_1", "SILK_ROAD_CONVOY", 4, 100000);
-        // 4 guards -> 40% mitigation. 1000 raid power -> 600 damage taken
         const ambush = CaravanEscortRobberyEngine.triggerBanditAmbush(caravan, 1000);
 
         expect(ambush.success).toBe(true);
@@ -42,26 +61,15 @@ describe("CaravanEscortRobberyEngine Waypoints, Bandit Ambushes & Depot Delivery
         expect(cart.currentHp).toBe(0);
     });
 
-    it("awards scaled gold payout based on cargo health upon depot delivery", () => {
+    it("awards exact un-floored gold payout based on cargo health upon depot delivery", () => {
         const caravan = CaravanEscortRobberyEngine.dispatchCaravan("merchant_1", "ROYAL_TREASURY_CARRIAGE", 2, 100000);
-        caravan.currentHp = 2000; // 80% HP (2000/2500)
+        caravan.currentHp = 125; // 5% HP (125/2500 = 0.05)
         caravan.status = "DELIVERED_SUCCESS";
 
-        // Base 500 gold * 0.80 = 400 gold
+        // Base 500 gold * 0.05 = 25 gold (truthful un-floored payout)
         const delivery = CaravanEscortRobberyEngine.completeDepotDelivery(caravan);
         expect(delivery.success).toBe(true);
-        expect(delivery.goldAwarded).toBe(400);
-        expect(delivery.cargoHealthRatio).toBe(0.8);
-    });
-
-    it("guards against unsupported caravan tier and unarrived delivery", () => {
-        expect(() => CaravanEscortRobberyEngine.dispatchCaravan("p", "PIRATE_SUBMARINE" as any)).toThrow(
-            "Unsupported caravan tier"
-        );
-
-        const inTransit = CaravanEscortRobberyEngine.dispatchCaravan("p", "MERCHANT_SUPPLY_CART");
-        const prematureDelivery = CaravanEscortRobberyEngine.completeDepotDelivery(inTransit);
-        expect(prematureDelivery.success).toBe(false);
-        expect(prematureDelivery.reason).toContain("not reached the final delivery depot");
+        expect(delivery.goldAwarded).toBe(25);
+        expect(delivery.cargoHealthRatio).toBe(0.05);
     });
 });

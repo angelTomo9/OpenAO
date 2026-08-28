@@ -88,7 +88,21 @@ export class CaravanEscortRobberyEngine {
     }
 
     /**
-     * Resolves a bandit ambush encounter, mitigating damage based on hired escort guards.
+     * Engages an ambush, locking caravan progression until resolved.
+     */
+    public static engageAmbush(
+        caravan: ActiveTradeCaravan
+    ): { success: boolean; status: CaravanStatus; reason?: string } {
+        if (!caravan || caravan.status !== "IN_TRANSIT") {
+            return { success: false, status: caravan?.status ?? "PLUNDERED_FAILURE", reason: "Caravan is not in transit." };
+        }
+
+        caravan.status = "AMBUSH_ENGAGED";
+        return { success: true, status: "AMBUSH_ENGAGED" };
+    }
+
+    /**
+     * Resolves a bandit ambush encounter, mitigating damage based on hired escort guards and returning to transit if intact.
      */
     public static triggerBanditAmbush(
         caravan: ActiveTradeCaravan,
@@ -99,7 +113,6 @@ export class CaravanEscortRobberyEngine {
         }
 
         const raidPower = Number.isFinite(banditRaidStrength) ? Math.max(10, Math.floor(banditRaidStrength)) : 50;
-        // Each escort guard mitigates 10% bandit damage (up to 70% max)
         const guardMitigation = Math.min(0.70, caravan.escortGuardCount * 0.10);
         const damageTaken = Math.max(10, Math.floor(raidPower * (1 - guardMitigation)));
 
@@ -115,7 +128,7 @@ export class CaravanEscortRobberyEngine {
     }
 
     /**
-     * Completes delivery at the trade depot and calculates payout based on intact cargo percentage.
+     * Completes delivery at the trade depot and calculates payout based on exact intact cargo percentage.
      */
     public static completeDepotDelivery(
         caravan: ActiveTradeCaravan
@@ -125,7 +138,7 @@ export class CaravanEscortRobberyEngine {
         }
 
         const def = CARAVAN_CATALOG[caravan.tier];
-        const healthRatio = Math.max(0.1, caravan.currentHp / caravan.maxHp);
+        const healthRatio = Math.max(0, caravan.currentHp / caravan.maxHp);
         const goldAwarded = Math.round(def.baseGoldPayout * healthRatio);
 
         return {
