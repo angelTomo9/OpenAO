@@ -134,7 +134,7 @@ export class UnderworldDungeonPortalEngine {
     }
 
     /**
-     * Engages or defeats a boss within the instance, enforcing lockouts.
+     * Engages or defeats a boss within the instance, strictly enforcing lockouts.
      */
     public static recordBossEncounter(
         instance: ActiveDungeonInstance,
@@ -161,8 +161,11 @@ export class UnderworldDungeonPortalEngine {
         }
 
         if (action === "DEFEAT_BOSS") {
+            if (instance.isBossChamberLocked) {
+                return { success: false, instanceCompleted: false, reason: "Boss chamber is locked; unlock chamber before recording defeat." };
+            }
+
             instance.defeatedBosses = Math.min(instance.totalBosses, instance.defeatedBosses + 1);
-            instance.isBossChamberLocked = false; // Chamber unlocks upon boss defeat
 
             if (instance.defeatedBosses >= instance.totalBosses) {
                 instance.isCompleted = true;
