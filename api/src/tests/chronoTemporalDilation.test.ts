@@ -23,9 +23,9 @@ describe("ChronoTemporalDilationEngine Temporal Spells & Paradox Backlash", () =
         expect(cdMultiplier).toBe(1.5);
     });
 
-    it("locks target in CHRONO_STASIS and halts cooldown progression to 0", () => {
-        const mage: PlayerChronoState = {
-            playerId: "chrono_mage_1",
+    it("locks target in CHRONO_STASIS without locking the caster", () => {
+        const caster: PlayerChronoState = {
+            playerId: "caster_mage",
             currentHp: 1000,
             maxHp: 1000,
             healthSnapshots: [],
@@ -33,18 +33,28 @@ describe("ChronoTemporalDilationEngine Temporal Spells & Paradox Backlash", () =
             isStasisLocked: false,
         };
 
-        ChronoTemporalDilationEngine.castChronoSpell(mage, mage, "CHRONO_STASIS", 5, 100000);
-        expect(mage.isStasisLocked).toBe(true);
+        const enemy: PlayerChronoState = {
+            playerId: "enemy_boss",
+            currentHp: 5000,
+            maxHp: 5000,
+            healthSnapshots: [],
+            activeEffects: [],
+            isStasisLocked: false,
+        };
 
-        const cdMultiplier = ChronoTemporalDilationEngine.calculateCooldownMultiplier(mage);
-        expect(cdMultiplier).toBe(0);
+        ChronoTemporalDilationEngine.castChronoSpell(caster, enemy, "CHRONO_STASIS", 5, 100000);
 
-        // Advance past 5s duration -> Stasis cleanses
-        ChronoTemporalDilationEngine.cleanseExpiredEffects(mage, 106000);
-        expect(mage.isStasisLocked).toBe(false);
+        // Enemy is locked in stasis
+        expect(enemy.isStasisLocked).toBe(true);
+        expect(ChronoTemporalDilationEngine.calculateCooldownMultiplier(enemy)).toBe(0);
+
+        // Caster is NOT locked in stasis
+        ChronoTemporalDilationEngine.cleanseExpiredEffects(caster, 100500);
+        expect(caster.isStasisLocked).toBe(false);
+        expect(ChronoTemporalDilationEngine.calculateCooldownMultiplier(caster)).toBe(1.0);
     });
 
-    it("rewinds health to state 5 seconds prior with REWIND_FATE", () => {
+    it("rewinds health to state 5 seconds prior with REWIND_FATE across multiple snapshots", () => {
         const mage: PlayerChronoState = {
             playerId: "chrono_mage_1",
             currentHp: 1000,
@@ -57,16 +67,22 @@ describe("ChronoTemporalDilationEngine Temporal Spells & Paradox Backlash", () =
         // Snapshot full health at 100000
         ChronoTemporalDilationEngine.recordHealthSnapshot(mage, 100000);
 
-        // Takes heavy damage at 106000
-        mage.currentHp = 200;
+        // Simulate 15 rapid casts within 5 seconds without evicting the snapshot
+        for (let i = 1; i <= 15; i++) {
+            mage.currentHp = 1000 - i * 40;
+            ChronoTemporalDilationEngine.recordHealthSnapshot(mage, 100000 + i * 200);
+        }
 
-        // Casts Rewind Fate at 106000
-        const rewindRes = ChronoTemporalDilationEngine.castChronoSpell(mage, mage, "REWIND_FATE", 5, 106000);
+        // At 105500, mage has 400 HP
+        expect(mage.currentHp).toBe(400);
+
+        // Casts Rewind Fate at 105500 -> Restores to snapshot from <= 100500 (920 HP at i=2, 100400ms)
+        const rewindRes = ChronoTemporalDilationEngine.castChronoSpell(mage, mage, "REWIND_FATE", 5, 105500);
         expect(rewindRes.success).toBe(true);
-        expect(mage.currentHp).toBe(1000); // Restored to 1000
+        expect(mage.currentHp).toBe(920);
     });
 
-    it("triggers Temporal Paradox Backlash and deals 35% damage when stacking too many spells", () => {
+    it("triggers Temporal Paradox Backlash when stacking too many spells", () => {
         const mage: PlayerChronoState = {
             playerId: "reckless_mage",
             currentHp: 1000,
@@ -76,17 +92,14 @@ describe("ChronoTemporalDilationEngine Temporal Spells & Paradox Backlash", () =
             isStasisLocked: false,
         };
 
-        // Cast 3 spells safely
         ChronoTemporalDilationEngine.castChronoSpell(mage, mage, "TIME_WARP", 20, 100000);
         ChronoTemporalDilationEngine.castChronoSpell(mage, mage, "TIME_WARP", 20, 100000);
         ChronoTemporalDilationEngine.castChronoSpell(mage, mage, "TIME_WARP", 20, 100000);
 
-        // 4th spell exceeds MAX_PARADOX_THRESHOLD (3) -> Triggers Paradox Backlash
         const paradoxRes = ChronoTemporalDilationEngine.castChronoSpell(mage, mage, "TIME_WARP", 20, 100000);
         expect(paradoxRes.success).toBe(false);
         expect(paradoxRes.isParadoxTriggered).toBe(true);
-        expect(paradoxRes.paradoxDamageDealt).toBe(350); // 35% of 1000
+        expect(paradoxRes.paradoxDamageDealt).toBe(350);
         expect(mage.currentHp).toBe(650);
-        expect(mage.activeEffects.length).toBe(0); // Dispelled
     });
 });

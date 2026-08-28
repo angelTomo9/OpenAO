@@ -111,39 +111,37 @@ export class ChronoTemporalDilationEngine {
     }
 
     /**
-     * Records a time-stamped health snapshot.
+     * Records a time-stamped health snapshot, retaining snapshots up to 15 seconds.
      */
     public static recordHealthSnapshot(player: PlayerChronoState, currentEpochMs = Date.now()): void {
         if (!player) return;
         player.healthSnapshots = Array.isArray(player.healthSnapshots) ? player.healthSnapshots : [];
         player.healthSnapshots.push({ epochMs: currentEpochMs, hp: player.currentHp });
 
-        // Keep only last 10 snapshots
-        if (player.healthSnapshots.length > 10) {
-            player.healthSnapshots.shift();
-        }
+        // Keep all snapshots from the last 15 seconds to support high cast-rate fights
+        player.healthSnapshots = player.healthSnapshots.filter((s) => currentEpochMs - s.epochMs <= 15000);
     }
 
     /**
-     * Cleanses expired temporal effects from a player.
+     * Cleanses expired temporal effects from a player, only locking stasis if the player is the target.
      */
     public static cleanseExpiredEffects(player: PlayerChronoState, currentEpochMs = Date.now()): void {
         if (!player || !Array.isArray(player.activeEffects)) return;
 
         player.activeEffects = player.activeEffects.filter((e) => currentEpochMs < e.expiresAtEpochMs);
-        const hasActiveStasis = player.activeEffects.some((e) => e.spellType === "CHRONO_STASIS");
+        const hasActiveStasis = player.activeEffects.some((e) => e.spellType === "CHRONO_STASIS" && e.targetPlayerId === player.playerId);
         player.isStasisLocked = hasActiveStasis;
     }
 
     /**
-     * Calculates effective cooldown tick speed based on active Time Warps.
+     * Calculates effective cooldown tick speed based on active Time Warps on this player.
      */
     public static calculateCooldownMultiplier(player: PlayerChronoState): number {
-        if (!player || player.isStasisLocked) return 0; // Stasis freezes cooldown progress
+        if (!player || player.isStasisLocked) return 0;
 
         let mult = 1.0;
         for (const effect of player.activeEffects ?? []) {
-            if (effect.spellType === "TIME_WARP") {
+            if (effect.spellType === "TIME_WARP" && effect.targetPlayerId === player.playerId) {
                 mult *= effect.hasteMultiplier;
             }
         }
