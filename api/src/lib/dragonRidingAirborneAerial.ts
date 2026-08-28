@@ -86,7 +86,7 @@ export class DragonRidingAirborneAerialEngine {
     }
 
     /**
-     * Transitions dragon mount to a target altitude state, validating stamina.
+     * Transitions dragon mount to a target altitude state, settling pending stamina before resetting timer.
      */
     public static changeAltitude(
         mount: ActiveDragonMount,
@@ -97,6 +97,9 @@ export class DragonRidingAirborneAerialEngine {
         if (!mount || !mount.isSummoned) {
             return { success: false, newState: mount?.altitudeState ?? "GROUNDED", altitudeMeters: 0, reason: "Dragon mount is not summoned." };
         }
+
+        // Settle pending stamina decay/regen before switching states
+        DragonRidingAirborneAerialEngine.updateFlightStamina(mount, currentEpochMs);
 
         if (mount.altitudeState === "EMERGENCY_GLIDE_LANDING" && targetState !== "GROUNDED") {
             return { success: false, newState: mount.altitudeState, altitudeMeters: mount.altitudeMeters, reason: "Mount is currently forced into emergency glide landing until grounded." };
