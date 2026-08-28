@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 /**
  * Astral Stargazing, Zodiac Constellation Alignment & Astrological Blessing Engine for OpenAO MMORPG.
  * Simulates telescope sky quadrant mapping, star charting, lunar resonance multipliers (New, Crescent, Half, Full Moon),
@@ -50,7 +52,7 @@ export const LUNAR_PHASE_MULTIPLIERS: Record<LunarPhase, number> = {
 
 export class AstronomyConstellationStargazingEngine {
     /**
-     * Starts a telescope observation session targeting a constellation.
+     * Starts a telescope observation session targeting a constellation with collision-resistant UUID.
      */
     public static startObservationSession(
         playerId: string,
@@ -62,8 +64,10 @@ export class AstronomyConstellationStargazingEngine {
             throw new Error(`Unsupported constellation: ${String(constellation)}`);
         }
 
+        const uuid = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${currentEpochMs}_${Math.random()}`;
+
         return {
-            sessionId: `obs_${constellation.toLowerCase()}_${currentEpochMs}_${Math.random().toString(36).substring(2, 7)}`,
+            sessionId: `obs_${constellation.toLowerCase()}_${uuid}`,
             playerId,
             targetConstellation: constellation,
             starsMappedCount: 0,
@@ -101,7 +105,7 @@ export class AstronomyConstellationStargazingEngine {
     }
 
     /**
-     * Channels a celestial blessing from a completed constellation chart under current lunar phase.
+     * Channels a celestial blessing from a completed constellation chart under current lunar phase with UUID identifier.
      */
     public static channelCelestialBlessing(
         session: TelescopeObservationSession,
@@ -117,9 +121,10 @@ export class AstronomyConstellationStargazingEngine {
         const lunarMult = LUNAR_PHASE_MULTIPLIERS[lunarPhase] ?? 1.0;
         const totalStatBonus = Math.round(data.baseBlessingBonus * lunarMult);
         const dur = Number.isFinite(durationMinutes) ? Math.max(1, durationMinutes) : 15;
+        const uuid = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${currentEpochMs}_${Math.random()}`;
 
         const blessing: ActiveAstrologicalBlessing = {
-            blessingId: `bless_${session.targetConstellation.toLowerCase()}_${currentEpochMs}_${Math.random().toString(36).substring(2, 7)}`,
+            blessingId: `bless_${session.targetConstellation.toLowerCase()}_${uuid}`,
             playerId: session.playerId,
             constellation: session.targetConstellation,
             lunarPhase,
