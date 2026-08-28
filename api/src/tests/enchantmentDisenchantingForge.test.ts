@@ -33,7 +33,6 @@ describe("EnchantmentDisenchantingForgeEngine Disenchanting & Reforging", () => 
 
         const essenceInventory = new Map<ArcaneEssenceType, number>([["ARCANE_DUST", 20]]);
 
-        // Rng = 0.90 (safe roll, no fracture)
         const reforgeRes = EnchantmentDisenchantingForgeEngine.reforgeEquipment(
             axe,
             "FLAMING",
@@ -44,12 +43,12 @@ describe("EnchantmentDisenchantingForgeEngine Disenchanting & Reforging", () => 
 
         expect(reforgeRes.success).toBe(true);
         expect(reforgeRes.prefixApplied).toBe("FLAMING");
-        expect(reforgeRes.newPowerRating).toBe(285); // 250 + 35
+        expect(reforgeRes.newPowerRating).toBe(285);
         expect(axe.activePrefix).toBe("FLAMING");
-        expect(essenceInventory.get("ARCANE_DUST")).toBe(10); // 20 - 10 consumed
+        expect(essenceInventory.get("ARCANE_DUST")).toBe(10);
     });
 
-    it("fractures item when forge instability roll fails", () => {
+    it("fractures item when forge instability roll fails without consuming essences", () => {
         const staff: MagicEquipmentItem = {
             itemId: "staff_01",
             itemName: "Archmage Staff",
@@ -60,7 +59,6 @@ describe("EnchantmentDisenchantingForgeEngine Disenchanting & Reforging", () => 
 
         const essenceInventory = new Map<ArcaneEssenceType, number>([["ETERNAL_PRISMATIC_CORE", 5]]);
 
-        // Rng = 0.01 (catastrophic instability roll)
         const failRes = EnchantmentDisenchantingForgeEngine.reforgeEquipment(
             staff,
             "TITAN_SLAYER",
@@ -73,6 +71,8 @@ describe("EnchantmentDisenchantingForgeEngine Disenchanting & Reforging", () => 
         expect(failRes.isFractured).toBe(true);
         expect(staff.isDestroyed).toBe(true);
         expect(failRes.reason).toContain("Forge Instability Overload");
+        // Essences preserved on fracture
+        expect(essenceInventory.get("ETERNAL_PRISMATIC_CORE")).toBe(5);
     });
 
     it("rejects reforging with insufficient essence materials", () => {

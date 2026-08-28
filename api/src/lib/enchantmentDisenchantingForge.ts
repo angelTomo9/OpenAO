@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 /**
  * Arcane Disenchanting, Essence Extraction & Equipment Reforging Engine for OpenAO MMORPG.
  * Simulates breaking down magical items into elemental essences,
@@ -95,14 +93,11 @@ export class EnchantmentDisenchantingForgeEngine {
             return { success: false, newPowerRating: item.basePowerRating, isFractured: false, reason: `Insufficient ${prefixData.requiredEssenceType}. Required: ${prefixData.requiredEssenceCount}, Available: ${currentEssenceCount}.` };
         }
 
-        // Deduct crafting essences
-        availableEssences.set(prefixData.requiredEssenceType, currentEssenceCount - prefixData.requiredEssenceCount);
-
         const skill = Math.max(1, Math.min(100, Number.isFinite(forgeMasterySkill) ? forgeMasterySkill : 1));
         // Instability formula: Base * (1 - skill/150)
         const netInstabilityPercent = Math.max(5, Math.min(90, prefixData.baseInstabilityPercent * (1 - skill / 150)));
 
-        // Roll for forge fracture
+        // Roll for forge fracture BEFORE consuming essences
         if (rng() * 100 < netInstabilityPercent) {
             item.isDestroyed = true;
             return {
@@ -112,6 +107,9 @@ export class EnchantmentDisenchantingForgeEngine {
                 reason: "Forge Instability Overload! The equipment fractured into fragments.",
             };
         }
+
+        // Deduct crafting essences only on successful reforge
+        availableEssences.set(prefixData.requiredEssenceType, currentEssenceCount - prefixData.requiredEssenceCount);
 
         item.activePrefix = targetPrefix;
         item.basePowerRating += prefixData.statBonusValue;
