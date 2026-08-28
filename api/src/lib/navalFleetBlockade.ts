@@ -105,7 +105,7 @@ export class NavalFleetBlockadeEngine {
     }
 
     /**
-     * Fires harpoon grappling hook to tether and intercept an intruder vessel.
+     * Fires harpoon grappling hook to tether and intercept an intruder vessel, validated against warship harpoon range.
      */
     public static fireHarpoonGrapple(
         blockade: ActiveNavalBlockade,
@@ -121,8 +121,14 @@ export class NavalFleetBlockadeEngine {
             return { success: false, isGrappled: false, reason: "Target vessel is already sunken or invalid." };
         }
 
-        const inRange = this.isVesselInBlockadeZone(blockade, vesselX, vesselY);
-        if (!inRange) {
+        const vx = Number.isFinite(vesselX) ? vesselX : 0;
+        const vy = Number.isFinite(vesselY) ? vesselY : 0;
+        const dist = Math.hypot(blockade.anchorLocation.x - vx, blockade.anchorLocation.y - vy);
+
+        const data = WARSHIP_CATALOG[blockade.warshipClass];
+        const harpoonRange = data.harpoonRangeTiles;
+
+        if (dist > harpoonRange || !this.isVesselInBlockadeZone(blockade, vesselX, vesselY)) {
             return { success: false, isGrappled: false, reason: "Target vessel is beyond blockade harpoon perimeter." };
         }
 

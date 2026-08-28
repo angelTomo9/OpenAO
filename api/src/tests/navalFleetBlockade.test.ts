@@ -17,15 +17,13 @@ describe("NavalFleetBlockadeEngine Fleet Blockades, Harpoons & Broadsides", () =
     it("verifies blockade zone territory coordinates", () => {
         const blockade = NavalFleetBlockadeEngine.establishBlockade("admiral", "WAR_GALLEON", "SKULL_REEF", 50, 50, 30);
 
-        // Vessel at (60, 50) -> 10 tiles away -> Inside
         expect(NavalFleetBlockadeEngine.isVesselInBlockadeZone(blockade, 60, 50)).toBe(true);
-
-        // Vessel at (150, 50) -> 100 tiles away -> Outside
         expect(NavalFleetBlockadeEngine.isVesselInBlockadeZone(blockade, 150, 50)).toBe(false);
     });
 
-    it("fires harpoon grappling hook to tether vessel inside zone and rejects vessels outside", () => {
-        const blockade = NavalFleetBlockadeEngine.establishBlockade("admiral", "DREADNOUGHT_IRONCLAD", "KRAKEN_ABYSS", 0, 0, 40);
+    it("gates harpoon grappling specifically by warship harpoonRangeTiles", () => {
+        // War Galleon has 25 tiles harpoon range and 50 control radius
+        const galleonBlockade = NavalFleetBlockadeEngine.establishBlockade("admiral", "WAR_GALLEON", "KRAKEN_ABYSS", 0, 0, 50);
         const merchantVessel: InterceptedVessel = {
             vesselId: "vessel_01",
             captainPlayerId: "merchant_tom",
@@ -36,15 +34,16 @@ describe("NavalFleetBlockadeEngine Fleet Blockades, Harpoons & Broadsides", () =
             isSunken: false,
         };
 
-        // Grapple within 40 tiles
-        const grappleRes = NavalFleetBlockadeEngine.fireHarpoonGrapple(blockade, merchantVessel, 20, 20);
+        // Within 25 tiles (20, 0) -> Succeeds
+        const grappleRes = NavalFleetBlockadeEngine.fireHarpoonGrapple(galleonBlockade, merchantVessel, 20, 0);
         expect(grappleRes.success).toBe(true);
         expect(merchantVessel.isGrappled).toBe(true);
 
-        // Grapple outside range
-        const outRes = NavalFleetBlockadeEngine.fireHarpoonGrapple(blockade, merchantVessel, 200, 200);
-        expect(outRes.success).toBe(false);
-        expect(outRes.reason).toContain("beyond blockade harpoon perimeter");
+        merchantVessel.isGrappled = false;
+        // At 30 tiles (30, 0) inside control zone (50) but beyond Galleon harpoon range (25) -> Rejects
+        const outRangeGrapple = NavalFleetBlockadeEngine.fireHarpoonGrapple(galleonBlockade, merchantVessel, 30, 0);
+        expect(outRangeGrapple.success).toBe(false);
+        expect(outRangeGrapple.reason).toContain("beyond blockade harpoon perimeter");
     });
 
     it("fires broadside cannon salvo and salvages 75% cargo when sunken", () => {
@@ -59,12 +58,11 @@ describe("NavalFleetBlockadeEngine Fleet Blockades, Harpoons & Broadsides", () =
             isSunken: false,
         };
 
-        // Dreadnought base 550 cannon power vs 0 armor -> 550 damage -> Sinks sloop
         const salvoRes = NavalFleetBlockadeEngine.fireBroadsideSalvo(blockade, weakSloop, 0);
         expect(salvoRes.success).toBe(true);
         expect(salvoRes.isSunken).toBe(true);
         expect(weakSloop.isSunken).toBe(true);
-        expect(salvoRes.plunderGoldAwarded).toBe(450); // 75% of 600
+        expect(salvoRes.plunderGoldAwarded).toBe(450);
     });
 
     it("guards against unsupported warship classes", () => {
