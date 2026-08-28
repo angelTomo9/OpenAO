@@ -10,7 +10,7 @@ describe("BeastTamingLoyaltyEngine Full Lifecycle & Combat Mechanics", () => {
         const wolf: WildCreatureTarget = {
             creatureId: "wolf_101",
             species: "DIRE_WOLF",
-            currentHp: 300, // 20% HP remaining
+            currentHp: 300,
             maxHp: 1500,
         };
 
@@ -35,7 +35,6 @@ describe("BeastTamingLoyaltyEngine Full Lifecycle & Combat Mechanics", () => {
             isAlive: true,
         };
 
-        // Griffon eats FISH (+15 loyalty -> 85 >= 80 -> DEVOTED)
         const feedRes = BeastTamingLoyaltyEngine.feedPet(pet, "FISH", 0, 5000);
         expect(feedRes.success).toBe(true);
         expect(feedRes.newLoyalty).toBe(85);
@@ -43,7 +42,7 @@ describe("BeastTamingLoyaltyEngine Full Lifecycle & Combat Mechanics", () => {
         expect(pet.mood).toBe("DEVOTED");
     });
 
-    it("rejects incompatible food diets", () => {
+    it("rejects incompatible food diets and guards unknown species", () => {
         const bear: TamedPetCompanion = {
             petId: "pet_bear_1",
             ownerPlayerId: "hunter_1",
@@ -57,17 +56,22 @@ describe("BeastTamingLoyaltyEngine Full Lifecycle & Combat Mechanics", () => {
             isAlive: true,
         };
 
-        // Bear prefers BERRIES, rejects MEAT
         const res = BeastTamingLoyaltyEngine.feedPet(bear, "MEAT");
         expect(res.success).toBe(false);
         expect(res.reason).toContain("will not eat MEAT");
+
+        // Unknown species runtime guard
+        const alienPet: TamedPetCompanion = { ...bear, species: "ALIEN_DRAGON" as any };
+        const alienFeed = BeastTamingLoyaltyEngine.feedPet(alienPet, "BERRIES");
+        expect(alienFeed.success).toBe(false);
+        expect(alienFeed.reason).toContain("Unsupported beast species");
     });
 
     it("applies DEVOTED bonus and REBELLIOUS penalty on attack commands", () => {
         const shadowPanther: TamedPetCompanion = {
             petId: "panther_01",
             ownerPlayerId: "hunter_1",
-            species: "SHADOW_PANTHER", // Base 180 dmg
+            species: "SHADOW_PANTHER",
             petName: "Midnight",
             currentHp: 1200,
             maxHp: 1200,
@@ -77,11 +81,9 @@ describe("BeastTamingLoyaltyEngine Full Lifecycle & Combat Mechanics", () => {
             isAlive: true,
         };
 
-        // Devoted: 180 * 1.20 = 216 damage against 0 armor
         const devotedAtk = BeastTamingLoyaltyEngine.commandAttack(shadowPanther, 0);
         expect(devotedAtk.damageDealt).toBe(216);
 
-        // Rebellious: 180 * 0.50 = 90 damage
         shadowPanther.mood = "REBELLIOUS";
         const rebelAtk = BeastTamingLoyaltyEngine.commandAttack(shadowPanther, 0);
         expect(rebelAtk.damageDealt).toBe(90);

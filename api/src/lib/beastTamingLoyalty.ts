@@ -10,7 +10,7 @@ export type PetFoodDiet = "MEAT" | "FISH" | "BERRIES";
 
 export interface BeastDefinition {
     species: BeastSpecies;
-    baseTamingDifficulty: number; // 0 to 1 (lower is harder)
+    baseTameChance: number; // 0 to 1 base probability modifier
     baseAttackDamage: number;
     preferredDiet: PetFoodDiet;
     maxHealth: number;
@@ -39,28 +39,28 @@ export interface TamedPetCompanion {
 export const BEAST_SPECIES_DATA: Record<BeastSpecies, BeastDefinition> = {
     DIRE_WOLF: {
         species: "DIRE_WOLF",
-        baseTamingDifficulty: 0.40,
+        baseTameChance: 0.40,
         baseAttackDamage: 120,
         preferredDiet: "MEAT",
         maxHealth: 1500,
     },
     SHADOW_PANTHER: {
         species: "SHADOW_PANTHER",
-        baseTamingDifficulty: 0.30,
+        baseTameChance: 0.30,
         baseAttackDamage: 180,
         preferredDiet: "MEAT",
         maxHealth: 1200,
     },
     GRIFFON: {
         species: "GRIFFON",
-        baseTamingDifficulty: 0.20,
+        baseTameChance: 0.20,
         baseAttackDamage: 240,
         preferredDiet: "FISH",
         maxHealth: 2200,
     },
     FOREST_BEAR: {
         species: "FOREST_BEAR",
-        baseTamingDifficulty: 0.35,
+        baseTameChance: 0.35,
         baseAttackDamage: 150,
         preferredDiet: "BERRIES",
         maxHealth: 3000,
@@ -101,8 +101,8 @@ export class BeastTamingLoyaltyEngine {
         const skill = Math.max(1, Math.min(100, Number.isFinite(hunterSkillLevel) ? hunterSkillLevel : 1));
         const hpRatio = Math.max(0.01, Math.min(1.0, target.currentHp / Math.max(1, target.maxHp)));
 
-        // Taming formula: Base * (1 + skill/100) * (1 - hpRatio * 0.50) -> Weaker HP is easier to tame
-        const successRate = Math.min(0.95, data.baseTamingDifficulty * (1 + skill / 100) * (1 - hpRatio * 0.50));
+        // Taming formula: Base * (1 + skill/100) * (1 - hpRatio * 0.50)
+        const successRate = Math.min(0.95, data.baseTameChance * (1 + skill / 100) * (1 - hpRatio * 0.50));
 
         if (rng() < successRate) {
             const pet: TamedPetCompanion = {
@@ -125,7 +125,7 @@ export class BeastTamingLoyaltyEngine {
     }
 
     /**
-     * Feeds a pet to increase loyalty and maintain mood.
+     * Feeds a pet to increase loyalty and maintain mood, safely guarding against invalid species.
      */
     public static feedPet(
         pet: TamedPetCompanion,
@@ -138,6 +138,10 @@ export class BeastTamingLoyaltyEngine {
         }
 
         const data = BEAST_SPECIES_DATA[pet.species];
+        if (!data) {
+            return { success: false, newLoyalty: pet.loyaltyPoints, newMood: pet.mood, reason: `Unsupported beast species: ${String(pet.species)}` };
+        }
+
         const isDietMatch = data.preferredDiet === foodDiet;
 
         if (!isDietMatch) {
@@ -159,7 +163,7 @@ export class BeastTamingLoyaltyEngine {
     }
 
     /**
-     * Commands pet to attack a target, applying mood multiplier.
+     * Commands pet to attack a target, safely guarding against invalid species.
      */
     public static commandAttack(
         pet: TamedPetCompanion,
@@ -170,8 +174,11 @@ export class BeastTamingLoyaltyEngine {
         }
 
         const data = BEAST_SPECIES_DATA[pet.species];
-        let moodMultiplier = 1.0;
+        if (!data) {
+            return { success: false, damageDealt: 0, mood: pet.mood, reason: `Unsupported beast species: ${String(pet.species)}` };
+        }
 
+        let moodMultiplier = 1.0;
         if (pet.mood === "DEVOTED") moodMultiplier = 1.20; // +20% bonus
         else if (pet.mood === "REBELLIOUS") moodMultiplier = 0.50; // -50% penalty
 
