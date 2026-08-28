@@ -14,45 +14,44 @@ describe("RelicExcavationArchaeologyEngine Surveying, Brush Excavation & Artifac
             isFullyExcavated: false,
         };
 
-        // Player at (100, 100) -> Exact node
         const exact = RelicExcavationArchaeologyEngine.surveyTriangulation(site, 100, 100);
         expect(exact.cue).toBe("EXCAVATION_NODE_FOUND");
         expect(exact.distanceTiles).toBe(0);
 
-        // Player at (110, 100) -> 10 tiles away -> HOT
         const hot = RelicExcavationArchaeologyEngine.surveyTriangulation(site, 110, 100);
         expect(hot.cue).toBe("HOT");
 
-        // Player at (140, 100) -> 40 tiles away -> WARM
         const warm = RelicExcavationArchaeologyEngine.surveyTriangulation(site, 140, 100);
         expect(warm.cue).toBe("WARM");
 
-        // Player at (200, 200) -> >100 tiles away -> COLD
         const cold = RelicExcavationArchaeologyEngine.surveyTriangulation(site, 200, 200);
         expect(cold.cue).toBe("COLD");
     });
 
-    it("successfully unearths fragment using DELICATE brush technique", () => {
+    it("successfully unearths fragment using DELICATE brush and updates dig site remaining count", () => {
         const site: ArchaeologyDigSite = {
             siteId: "site_glacier_01",
             theme: "FROZEN_GLACIER",
             targetRelicLocation: { x: 50, y: 50 },
-            totalFragmentsRemaining: 3,
+            totalFragmentsRemaining: 1,
             isFullyExcavated: false,
         };
 
         const session = RelicExcavationArchaeologyEngine.startExcavationSession(site, 70).session!;
 
-        for (let i = 0; i < 10; i++) {
-            RelicExcavationArchaeologyEngine.applyBrushStroke(session, "DELICATE");
+        for (let i = 0; i < 9; i++) {
+            RelicExcavationArchaeologyEngine.applyBrushStroke(session, "DELICATE", site);
         }
+        const finalStroke = RelicExcavationArchaeologyEngine.applyBrushStroke(session, "DELICATE", site);
 
+        expect(finalStroke.isUnearthed).toBe(true);
         expect(session.isSuccessfullyUnearthed).toBe(true);
         expect(session.isShattered).toBe(false);
-        expect(session.currentPressureAccumulated).toBe(50); // 10 * 5 = 50 <= 70 threshold
+        expect(site.totalFragmentsRemaining).toBe(0);
+        expect(site.isFullyExcavated).toBe(true);
     });
 
-    it("shatters relic when AGGRESSIVE brush exceeds fragility threshold", () => {
+    it("shatters relic when AGGRESSIVE brush exceeds fragility threshold before completion", () => {
         const site: ArchaeologyDigSite = {
             siteId: "site_volcano_01",
             theme: "VOLCANIC_RUINS",
@@ -63,16 +62,15 @@ describe("RelicExcavationArchaeologyEngine Surveying, Brush Excavation & Artifac
 
         const session = RelicExcavationArchaeologyEngine.startExcavationSession(site, 50).session!;
 
-        // 2 aggressive strokes: 2 * 30 = 60 pressure (> 50 threshold) -> Shatters
-        RelicExcavationArchaeologyEngine.applyBrushStroke(session, "AGGRESSIVE");
-        const res = RelicExcavationArchaeologyEngine.applyBrushStroke(session, "AGGRESSIVE");
+        RelicExcavationArchaeologyEngine.applyBrushStroke(session, "AGGRESSIVE", site);
+        const res = RelicExcavationArchaeologyEngine.applyBrushStroke(session, "AGGRESSIVE", site);
 
         expect(res.isShattered).toBe(true);
         expect(session.isShattered).toBe(true);
         expect(res.reason).toContain("shattered into dust");
     });
 
-    it("restores ancient relic artifact and awards museum exhibition points", () => {
+    it("restores ancient relic artifact with unique ID and awards museum exhibition points", () => {
         const restoreRes = RelicExcavationArchaeologyEngine.restoreArtifact(
             "SUNKEN_ATLANTIS",
             4,
@@ -81,7 +79,8 @@ describe("RelicExcavationArchaeologyEngine Surveying, Brush Excavation & Artifac
 
         expect(restoreRes.success).toBe(true);
         expect(restoreRes.artifact?.artifactName).toBe("Crown of the Abyssal Kings");
-        expect(restoreRes.artifact?.museumExhibitionPoints).toBe(600); // 4 * 150
+        expect(restoreRes.artifact?.museumExhibitionPoints).toBe(600);
+        expect(restoreRes.artifact?.artifactId).toContain("relic_sunken_atlantis_");
     });
 
     it("rejects artifact restoration with insufficient fragments", () => {
