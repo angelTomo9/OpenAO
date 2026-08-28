@@ -68,6 +68,7 @@ export class AstralRiftInvasionDefenseEngine {
 
         if (currentEpochMs >= event.expiresAtEpochMs) {
             event.phase = "COLLAPSED_FAILURE";
+            event.riftStabilityPercent = 0; // Mutate stored stability to match return value
             return { success: false, waveNumber: event.currentWave, stabilityRemaining: 0, phase: "COLLAPSED_FAILURE", reason: "Rift event duration expired." };
         }
 
@@ -99,7 +100,7 @@ export class AstralRiftInvasionDefenseEngine {
     }
 
     /**
-     * Channels celestial sealing runes to restore rift stability and grant contribution points.
+     * Channels celestial sealing runes to restore rift stability during active invasion phases.
      */
     public static channelSealingRune(
         event: RiftInvasionEvent,
@@ -108,6 +109,10 @@ export class AstralRiftInvasionDefenseEngine {
     ): { success: boolean; newStability: number; playerTotalContribution: number; eventSealed: boolean; reason?: string } {
         if (!event || event.phase === "COLLAPSED_FAILURE" || event.phase === "SEALED_VICTORY") {
             return { success: false, newStability: event?.riftStabilityPercent ?? 0, playerTotalContribution: 0, eventSealed: false, reason: "Event is inactive or already completed." };
+        }
+
+        if (event.phase === "PREPARATION") {
+            return { success: false, newStability: event.riftStabilityPercent, playerTotalContribution: 0, eventSealed: false, reason: "Cannot channel sealing runes during the preparation phase." };
         }
 
         if (!playerId) {
