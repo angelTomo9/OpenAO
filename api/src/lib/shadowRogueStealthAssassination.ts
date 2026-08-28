@@ -1,8 +1,6 @@
-import crypto from "node:crypto";
-
 /**
  * Shadow Rogue Stealth, Backstab Flanking & Smoke Bomb Concealment Engine for OpenAO MMORPG.
- * Simulates rogue invisibility cloaking, sentry true-sight detection radii,
+ * Simulates rogue invisibility cloaking, sentry frontal field-of-view detection radii,
  * positional backstab rear-arc multipliers (2.5x critical damage), and smoke bomb tactical concealment.
  */
 
@@ -54,7 +52,7 @@ export class ShadowRogueStealthAssassinationEngine {
     }
 
     /**
-     * Checks if a sentry spots the rogue based on distance and facing angle.
+     * Checks if a sentry spots the rogue based on distance and sentry frontal vision cone.
      */
     public static checkSentryDetection(
         rogue: RogueCombatant,
@@ -62,13 +60,16 @@ export class ShadowRogueStealthAssassinationEngine {
         currentEpochMs = Date.now()
     ): { isDetected: boolean; reason?: string } {
         if (!rogue || rogue.stealthState === "UNSTEALTHED") return { isDetected: true };
-        if (rogue.stealthState === "SMOKE_CONCEALED") return { isDetected: false }; // Smoke grants absolute concealment
 
-        // Check if stealth expired
+        // Check if stealth / smoke concealment expired
         const elapsed = (currentEpochMs - rogue.stealthStartedEpochMs) / 1000;
         if (elapsed >= rogue.stealthDurationSeconds) {
             rogue.stealthState = "UNSTEALTHED";
-            return { isDetected: true, reason: "Stealth duration expired." };
+            return { isDetected: true, reason: "Stealth concealment duration expired." };
+        }
+
+        if (rogue.stealthState === "SMOKE_CONCEALED") {
+            return { isDetected: false }; // Smoke bomb grants total concealment while active
         }
 
         const dx = rogue.location.x - sentry.location.x;
@@ -76,8 +77,17 @@ export class ShadowRogueStealthAssassinationEngine {
         const dist = Math.hypot(dx, dy);
 
         if (dist <= sentry.detectionRadiusTiles) {
-            rogue.stealthState = "UNSTEALTHED";
-            return { isDetected: true, reason: "Entered sentry true-sight perimeter." };
+            // Check sentry field of view cone (within 90 degrees of sentry facing)
+            let angleToRogue = (Math.atan2(dx, -dy) * 180) / Math.PI;
+            if (angleToRogue < 0) angleToRogue += 360;
+
+            let diff = Math.abs(angleToRogue - sentry.facingDegrees);
+            if (diff > 180) diff = 360 - diff;
+
+            if (diff <= 90) {
+                rogue.stealthState = "UNSTEALTHED";
+                return { isDetected: true, reason: "Spotted inside sentry frontal vision perimeter." };
+            }
         }
 
         return { isDetected: false };
@@ -95,16 +105,13 @@ export class ShadowRogueStealthAssassinationEngine {
         const dy = attackerLoc.y - targetLoc.y;
         if (dx === 0 && dy === 0) return true;
 
-        // Angle from target to attacker in degrees (0 = North)
         let angleToAttacker = (Math.atan2(dx, -dy) * 180) / Math.PI;
         if (angleToAttacker < 0) angleToAttacker += 360;
 
-        // Target's rear vector is facing + 180
         const rearAngle = (targetFacingDeg + 180) % 360;
         let diff = Math.abs(angleToAttacker - rearAngle);
         if (diff > 180) diff = 360 - diff;
 
-        // Within 45 degrees of exact rear
         return diff <= 45;
     }
 
@@ -123,9 +130,9 @@ export class ShadowRogueStealthAssassinationEngine {
         let multiplier = 1.0;
 
         if (isRear && rogue.stealthState === "IN_STEALTH") {
-            multiplier = 2.50; // +150% backstab crit
+            multiplier = 2.50;
         } else if (isRear) {
-            multiplier = 1.40; // +40% unstealthed flank
+            multiplier = 1.40;
         }
 
         const armor = Number.isFinite(target.armorRating) ? Math.max(0, target.armorRating) : 0;
@@ -134,7 +141,6 @@ export class ShadowRogueStealthAssassinationEngine {
         const damageDealt = Math.max(20, Math.floor(rogue.baseDaggerDamage * multiplier * armorMitigation));
         target.currentHp = Math.max(0, target.currentHp - damageDealt);
 
-        // Break stealth on attack
         rogue.stealthState = "UNSTEALTHED";
 
         return {
