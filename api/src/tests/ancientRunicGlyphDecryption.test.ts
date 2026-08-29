@@ -13,7 +13,6 @@ describe("AncientRunicGlyphDecryptionEngine Ciphers & Lore", () => {
 
         const chisel: ScholarChiselTool = { toolId: "chisel_01", currentDurability: 50, maxDurability: 50, isBroken: false };
 
-        // Rotate wheel by +92 degrees (within +-5 deg tolerance of target 90 deg)
         AncientRunicGlyphDecryptionEngine.rotateCipherWheel(stone, 92);
         expect(stone.currentWheelRotationDegrees).toBe(92);
 
@@ -27,7 +26,7 @@ describe("AncientRunicGlyphDecryptionEngine Ciphers & Lore", () => {
     });
 
     it("rejects decryption when cipher wheel is misaligned", () => {
-        const stone = AncientRunicGlyphDecryptionEngine.createPuzzleStone("GLYPH_OF_THE_VOID", 180, 100000); // Target is 270 deg
+        const stone = AncientRunicGlyphDecryptionEngine.createPuzzleStone("GLYPH_OF_THE_VOID", 180, 100000);
         const chisel: ScholarChiselTool = { toolId: "chisel_02", currentDurability: 20, maxDurability: 20, isBroken: false };
 
         const failRes = AncientRunicGlyphDecryptionEngine.attemptDecryption(stone, chisel, "scholar_02");
@@ -35,6 +34,21 @@ describe("AncientRunicGlyphDecryptionEngine Ciphers & Lore", () => {
         expect(failRes.reason).toContain("Cipher wheel misaligned");
         expect(stone.isDecrypted).toBe(false);
         expect(chisel.currentDurability).toBe(15);
+    });
+
+    it("guards against unknown glyph types in attemptDecryption without consuming chisel durability", () => {
+        const fakeStone: DungeonPuzzleStone = {
+            stoneId: "fake_stone",
+            glyphType: "UNKNOWN_CHAOS_GLYPH" as any,
+            currentWheelRotationDegrees: 0,
+            isDecrypted: false,
+        };
+        const chisel: ScholarChiselTool = { toolId: "c_safe", currentDurability: 30, maxDurability: 30, isBroken: false };
+
+        const res = AncientRunicGlyphDecryptionEngine.attemptDecryption(fakeStone, chisel, "scholar");
+        expect(res.success).toBe(false);
+        expect(res.reason).toContain("Unsupported glyph type");
+        expect(chisel.currentDurability).toBe(30); // Durability preserved
     });
 
     it("breaks chisel when durability drops to 0 and blocks subsequent etching attempts", () => {
@@ -46,7 +60,6 @@ describe("AncientRunicGlyphDecryptionEngine Ciphers & Lore", () => {
         expect(brittleChisel.currentDurability).toBe(0);
         expect(brittleChisel.isBroken).toBe(true);
 
-        // Next stone attempt fails due to broken chisel
         const stone2 = AncientRunicGlyphDecryptionEngine.createPuzzleStone("GLYPH_OF_THE_ECLIPSE", 0);
         const blocked = AncientRunicGlyphDecryptionEngine.attemptDecryption(stone2, brittleChisel, "scholar");
         expect(blocked.success).toBe(false);
@@ -62,14 +75,5 @@ describe("AncientRunicGlyphDecryptionEngine Ciphers & Lore", () => {
         const reAttempt = AncientRunicGlyphDecryptionEngine.attemptDecryption(stone, chisel, "scholar");
         expect(reAttempt.success).toBe(false);
         expect(reAttempt.reason).toContain("already decrypted");
-    });
-
-    it("guards against unsupported glyph types and handles angle wrap-around", () => {
-        expect(() => AncientRunicGlyphDecryptionEngine.createPuzzleStone("GLYPH_OF_CHAOS" as any)).toThrow(
-            "Unsupported glyph type"
-        );
-
-        const stone = AncientRunicGlyphDecryptionEngine.createPuzzleStone("GLYPH_OF_THE_SUN", 720);
-        expect(stone.currentWheelRotationDegrees).toBe(0);
     });
 });

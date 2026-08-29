@@ -104,6 +104,10 @@ export class AncientRunicGlyphDecryptionEngine {
         }
 
         const glyphData = GLYPH_CATALOG[stone.glyphType];
+        if (!glyphData) {
+            return { success: false, xpAwarded: 0, goldAwarded: 0, loreText: "", reason: `Unsupported glyph type: ${String(stone.glyphType)}` };
+        }
+
         chisel.currentDurability = Math.max(0, chisel.currentDurability - 5);
         if (chisel.currentDurability === 0) {
             chisel.isBroken = true;
