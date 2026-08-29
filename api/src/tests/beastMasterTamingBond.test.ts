@@ -29,38 +29,47 @@ describe("BeastMasterTamingBondEngine Pet Taming & Loyalty", () => {
             tamedEpochMs: 100000,
         };
 
-        // Feed Pheromone Gland (+30 loyalty -> 90 loyalty)
         const feedRes = BeastMasterTamingBondEngine.feedPet(pet, "PHEROMONE_SCENT_GLAND");
         expect(feedRes.success).toBe(true);
         expect(feedRes.newLoyalty).toBe(90);
         expect(feedRes.isAlphaSynergyActive).toBe(true);
         expect(pet.currentHp).toBe(1100);
 
-        // Command Attack with Alpha bonus: Base 85 * 1.30 = 111 damage (0 defense)
         const atk = BeastMasterTamingBondEngine.commandAttack(pet, 0);
         expect(atk.success).toBe(true);
         expect(atk.damageDealt).toBe(111);
         expect(atk.isAlphaBonusApplied).toBe(true);
     });
 
-    it("triggers disobedience when loyalty drops below 20", () => {
-        const disloyalPet: TamedBeastPet = {
+    it("triggers disobedience via tickLoyaltyDecay when loyalty drops below 20", () => {
+        const pet: TamedBeastPet = {
             petId: "pet_panther",
             masterPlayerId: "h",
             species: "SHADOW_STALKER_PANTHER",
             petName: "Shadow",
             currentHp: 1500,
             maxHp: 1500,
-            loyaltyPoints: 10,
+            loyaltyPoints: 50,
             isRebellious: false,
             isAlive: true,
             tamedEpochMs: 100000,
         };
 
-        const atk = BeastMasterTamingBondEngine.commandAttack(disloyalPet);
+        // Decay loyalty from 50 -> 10 (< 20 threshold)
+        const decayRes = BeastMasterTamingBondEngine.tickLoyaltyDecay(pet, 40);
+        expect(decayRes.success).toBe(true);
+        expect(decayRes.newLoyalty).toBe(10);
+        expect(decayRes.isRebellious).toBe(true);
+
+        const atk = BeastMasterTamingBondEngine.commandAttack(pet);
         expect(atk.success).toBe(false);
         expect(atk.reason).toContain("disobedient");
-        expect(disloyalPet.isRebellious).toBe(true);
+        expect(pet.isRebellious).toBe(true);
+
+        // Feeding restores loyalty and clears rebellion
+        const restore = BeastMasterTamingBondEngine.feedPet(pet, "AMBROSIA_TREAT");
+        expect(restore.newLoyalty).toBe(70);
+        expect(pet.isRebellious).toBe(false);
     });
 
     it("handles wild beast taming failure when roll exceeds threshold", () => {
@@ -84,6 +93,7 @@ describe("BeastMasterTamingBondEngine Pet Taming & Loyalty", () => {
         };
 
         expect(BeastMasterTamingBondEngine.feedPet(deadPet, "WILD_MEAT_CHUNKS").success).toBe(false);
+        expect(BeastMasterTamingBondEngine.tickLoyaltyDecay(deadPet).success).toBe(false);
         expect(BeastMasterTamingBondEngine.commandAttack(deadPet).success).toBe(false);
     });
 });

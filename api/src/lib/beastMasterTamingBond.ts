@@ -124,6 +124,31 @@ export class BeastMasterTamingBondEngine {
     }
 
     /**
+     * Simulates hunger / neglect loyalty decay over time.
+     */
+    public static tickLoyaltyDecay(
+        pet: TamedBeastPet,
+        decayPoints = 10
+    ): { success: boolean; newLoyalty: number; isRebellious: boolean } {
+        if (!pet || !pet.isAlive) {
+            return { success: false, newLoyalty: 0, isRebellious: false };
+        }
+
+        const decay = Number.isFinite(decayPoints) ? Math.max(1, decayPoints) : 10;
+        pet.loyaltyPoints = Math.max(0, pet.loyaltyPoints - decay);
+
+        if (pet.loyaltyPoints < this.REBELLION_LOYALTY_THRESHOLD) {
+            pet.isRebellious = true;
+        }
+
+        return {
+            success: true,
+            newLoyalty: pet.loyaltyPoints,
+            isRebellious: pet.isRebellious,
+        };
+    }
+
+    /**
      * Issues an attack command to the tamed beast against a target enemy.
      */
     public static commandAttack(
