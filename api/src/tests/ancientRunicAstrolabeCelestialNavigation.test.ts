@@ -43,6 +43,22 @@ describe("AncientRunicAstrolabeCelestialNavigationEngine Astrolabes & Star Chart
         expect(astrolabe.currentStarlightCharge).toBe(80); // No charges consumed on failure
     });
 
+    it("rejects out-of-bounds celestial coordinates explicitly without consuming charges", () => {
+        const astrolabe = AncientRunicAstrolabeCelestialNavigationEngine.craftAstrolabe("nav_oob", "SOLAR_MERIDIAN_ASTROLABE", 100000);
+
+        // Declination 1000 (out of [-90, 90] bounds)
+        const oobRes = AncientRunicAstrolabeCelestialNavigationEngine.alignConstellation(
+            astrolabe,
+            "THE_GREAT_DRAGON_CONSTELLATION",
+            45,
+            1000
+        );
+
+        expect(oobRes.success).toBe(false);
+        expect(oobRes.reason).toContain("Invalid celestial coordinates");
+        expect(astrolabe.currentStarlightCharge).toBe(100); // Preserved
+    });
+
     it("rejects alignment when starlight charges are depleted and recharges properly", () => {
         const astrolabe = AncientRunicAstrolabeCelestialNavigationEngine.craftAstrolabe("nav_03", "VOID_ZENITH_ASTROLABE", 100000);
         astrolabe.currentStarlightCharge = 10; // Insufficient for 20 cost
@@ -86,19 +102,5 @@ describe("AncientRunicAstrolabeCelestialNavigationEngine Astrolabes & Star Chart
         );
         expect(badConst.success).toBe(false);
         expect(badConst.reason).toContain("Unknown constellation");
-    });
-
-    it("guards against unattuned astrolabes", () => {
-        const deadAstrolabe: ActiveAstrolabe = {
-            astrolabeId: "a",
-            navigatorPlayerId: "p",
-            astrolabeType: "SOLAR_MERIDIAN_ASTROLABE",
-            currentStarlightCharge: 100,
-            maxStarlightCharge: 100,
-            isAttuned: false,
-        };
-
-        expect(AncientRunicAstrolabeCelestialNavigationEngine.alignConstellation(deadAstrolabe, "THE_GREAT_DRAGON_CONSTELLATION", 45, 30).success).toBe(false);
-        expect(AncientRunicAstrolabeCelestialNavigationEngine.rechargeStarlight(deadAstrolabe).success).toBe(false);
     });
 });

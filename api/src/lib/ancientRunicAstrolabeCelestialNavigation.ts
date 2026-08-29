@@ -105,8 +105,13 @@ export class AncientRunicAstrolabeCelestialNavigationEngine {
             return { success: false, remainingCharges: astrolabe.currentStarlightCharge, reason: `Insufficient starlight charge. Requires ${this.ALIGNMENT_COST_CHARGES}, available: ${astrolabe.currentStarlightCharge}.` };
         }
 
-        const ra = Number.isFinite(inputRightAscensionDegrees) ? ((inputRightAscensionDegrees % 360 + 360) % 360) : 0;
-        const dec = Number.isFinite(inputDeclinationDegrees) ? Math.max(-90, Math.min(90, inputDeclinationDegrees)) : 0;
+        if (!Number.isFinite(inputRightAscensionDegrees) || inputRightAscensionDegrees < 0 || inputRightAscensionDegrees >= 360 ||
+            !Number.isFinite(inputDeclinationDegrees) || inputDeclinationDegrees < -90 || inputDeclinationDegrees > 90) {
+            return { success: false, remainingCharges: astrolabe.currentStarlightCharge, reason: "Invalid celestial coordinates. RA must be [0, 360) and Dec must be [-90, +90]." };
+        }
+
+        const ra = inputRightAscensionDegrees;
+        const dec = inputDeclinationDegrees;
 
         const raDiff = Math.min(Math.abs(ra - constellationData.rightAscensionDegrees), 360 - Math.abs(ra - constellationData.rightAscensionDegrees));
         const decDiff = Math.abs(dec - constellationData.declinationDegrees);
