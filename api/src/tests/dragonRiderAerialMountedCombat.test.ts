@@ -1,21 +1,20 @@
 import { describe, it, expect } from "vitest";
 import {
     DragonRiderAerialMountedCombatEngine,
-    ActiveDragonMount,
-    AerialCombatTarget,
+    type AerialCombatTarget,
 } from "../lib/dragonRiderAerialMountedCombat.js";
 
 describe("DragonRiderAerialMountedCombatEngine Dragons & Aerial Combat", () => {
-    it("summons Crimson Fire Drake, ascends to High Altitude Swoop, and unleashes empowered dive bomb", () => {
+    it("summons Crimson Fire Drake, ascends to High Altitude Swoop including takeoff cost, and unleashes empowered dive bomb", () => {
         const drake = DragonRiderAerialMountedCombatEngine.summonDragonMount("rider_01", "CRIMSON_FIRE_DRAKE", 100000);
         expect(drake.breed).toBe("CRIMSON_FIRE_DRAKE");
         expect(drake.currentStamina).toBe(100);
         expect(drake.altitudeState).toBe("GROUNDED");
 
-        // Ascend to High Altitude Swoop (-25 stamina)
+        // Ascend directly from Grounded to High Altitude Swoop (costs 25 swoop + 15 takeoff = 40 stamina)
         const ascendRes = DragonRiderAerialMountedCombatEngine.setAltitudeState(drake, "HIGH_ALTITUDE_SWOOP");
         expect(ascendRes.success).toBe(true);
-        expect(drake.currentStamina).toBe(75);
+        expect(drake.currentStamina).toBe(60);
         expect(drake.isSwoopEmpowered).toBe(true);
 
         const target: AerialCombatTarget = { targetId: "boss_wyvern", currentHp: 500, isAlive: true, statusEffects: [] };
@@ -40,7 +39,7 @@ describe("DragonRiderAerialMountedCombatEngine Dragons & Aerial Combat", () => {
         expect(target.statusEffects).toContain("FROSTBITE_SLOW_40");
     });
 
-    it("rejects takeoff when stamina is insufficient and recovers stamina when resting", () => {
+    it("rejects takeoff when stamina is insufficient and recovers stamina only when grounded or in low flight", () => {
         const drake = DragonRiderAerialMountedCombatEngine.summonDragonMount("r", "CRIMSON_FIRE_DRAKE", 100000);
         drake.currentStamina = 5; // Insufficient for 15 takeoff cost
 
@@ -48,7 +47,7 @@ describe("DragonRiderAerialMountedCombatEngine Dragons & Aerial Combat", () => {
         expect(failTakeoff.success).toBe(false);
         expect(failTakeoff.reason).toContain("Insufficient stamina");
 
-        // Rest stamina
+        // Rest stamina while grounded succeeds
         const rest = DragonRiderAerialMountedCombatEngine.restStamina(drake, 50);
         expect(rest.success).toBe(true);
         expect(drake.currentStamina).toBe(55);
@@ -57,6 +56,10 @@ describe("DragonRiderAerialMountedCombatEngine Dragons & Aerial Combat", () => {
         const successTakeoff = DragonRiderAerialMountedCombatEngine.setAltitudeState(drake, "LOW_FLIGHT");
         expect(successTakeoff.success).toBe(true);
         expect(drake.altitudeState).toBe("LOW_FLIGHT");
+
+        // Set to high altitude swoop and verify restStamina is rejected
+        DragonRiderAerialMountedCombatEngine.setAltitudeState(drake, "HIGH_ALTITUDE_SWOOP");
+        expect(DragonRiderAerialMountedCombatEngine.restStamina(drake, 20).success).toBe(false);
     });
 
     it("guards against dead targets and fatal damage tracking", () => {

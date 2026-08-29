@@ -99,10 +99,11 @@ export class DragonRiderAerialMountedCombatEngine {
             mount.isAirborne = true;
             mount.isSwoopEmpowered = false;
         } else if (targetState === "HIGH_ALTITUDE_SWOOP") {
-            if (mount.currentStamina < this.SWOOP_STAMINA_COST) {
+            const cost = this.SWOOP_STAMINA_COST + (mount.altitudeState === "GROUNDED" ? this.TAKEOFF_STAMINA_COST : 0);
+            if (mount.currentStamina < cost) {
                 return { success: false, newState: mount.altitudeState, remainingStamina: mount.currentStamina, reason: "Insufficient stamina for high altitude swoop ascent." };
             }
-            mount.currentStamina -= this.SWOOP_STAMINA_COST;
+            mount.currentStamina -= cost;
             mount.altitudeState = "HIGH_ALTITUDE_SWOOP";
             mount.isAirborne = true;
             mount.isSwoopEmpowered = true;
@@ -171,7 +172,9 @@ export class DragonRiderAerialMountedCombatEngine {
         mount: ActiveDragonMount,
         recoveryAmount = 30
     ): { success: boolean; newStamina: number } {
-        if (!mount) return { success: false, newStamina: 0 };
+        if (!mount || mount.altitudeState === "HIGH_ALTITUDE_SWOOP") {
+            return { success: false, newStamina: mount?.currentStamina ?? 0 };
+        }
 
         const rec = Number.isFinite(recoveryAmount) ? Math.max(0, recoveryAmount) : 30;
         mount.currentStamina = Math.min(mount.maxStamina, mount.currentStamina + rec);
