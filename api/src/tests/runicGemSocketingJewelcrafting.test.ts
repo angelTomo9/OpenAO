@@ -20,10 +20,10 @@ describe("RunicGemSocketingJewelcraftingEngine Sockets, Gems & Prismatic Harmony
         expect(drill2.success).toBe(true);
         expect(cuirass.sockets.length).toBe(2);
 
-        // Third drill rejected (capacity 2)
+        // Third drill rejected (effective capacity 2)
         const drill3 = RunicGemSocketingJewelcraftingEngine.drillSocket(cuirass, "RED");
         expect(drill3.success).toBe(false);
-        expect(drill3.reason).toContain("Maximum socket capacity");
+        expect(drill3.reason).toContain("Maximum socket capacity (2) reached");
 
         // Insert Emerald and Sapphire
         const sock1 = RunicGemSocketingJewelcraftingEngine.socketGem(cuirass, 0, "EMERALD_OF_VITALITY");
@@ -46,7 +46,6 @@ describe("RunicGemSocketingJewelcraftingEngine Sockets, Gems & Prismatic Harmony
             isDestroyed: false,
         };
 
-        // Two Rubies (35 + 35 = 70 Attack Power) * 1.20 Prismatic Harmony = 84 Attack Power
         const result = RunicGemSocketingJewelcraftingEngine.calculateSocketedStats(blade);
         expect(result.isPrismaticHarmonyActive).toBe(true);
         expect(result.stats.ATTACK_POWER).toBe(84);
@@ -59,13 +58,13 @@ describe("RunicGemSocketingJewelcraftingEngine Sockets, Gems & Prismatic Harmony
             maxSocketCapacity: 2,
             sockets: [
                 { socketIndex: 0, colorAffinity: "BLUE", insertedGem: "SAPPHIRE_OF_FROST" },
-                { socketIndex: 1, colorAffinity: "YELLOW" }, // Empty socket
+                { socketIndex: 1, colorAffinity: "YELLOW" },
             ],
             isDestroyed: false,
         };
 
         const initialStats = RunicGemSocketingJewelcraftingEngine.calculateSocketedStats(staff);
-        expect(initialStats.isPrismaticHarmonyActive).toBe(false); // Incomplete sockets
+        expect(initialStats.isPrismaticHarmonyActive).toBe(false);
         expect(initialStats.stats.MAX_MANA).toBe(300);
 
         const unsocketRes = RunicGemSocketingJewelcraftingEngine.unsocketGem(staff, 0);

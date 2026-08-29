@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 /**
  * Runic Gem Socketing, Prismatic Sockets & Jewelcrafting Synergy Engine for OpenAO MMORPG.
  * Simulates chisel socket drilling, gemstone socketing (Ruby, Sapphire, Emerald, Topaz, Diamond),
@@ -56,8 +54,9 @@ export class RunicGemSocketingJewelcraftingEngine {
             equipment.sockets = [];
         }
 
-        if (equipment.sockets.length >= this.MAX_SOCKET_CAPACITY || equipment.sockets.length >= equipment.maxSocketCapacity) {
-            return { success: false, socketCount: equipment.sockets.length, newSocketIndex: -1, reason: `Maximum socket capacity (${equipment.maxSocketCapacity}) reached.` };
+        const effectiveMax = Math.min(this.MAX_SOCKET_CAPACITY, Math.max(1, equipment.maxSocketCapacity || 1));
+        if (equipment.sockets.length >= effectiveMax) {
+            return { success: false, socketCount: equipment.sockets.length, newSocketIndex: -1, reason: `Maximum socket capacity (${effectiveMax}) reached.` };
         }
 
         const newIndex = equipment.sockets.length;
