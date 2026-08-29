@@ -141,15 +141,28 @@ export class CelestialShrinePilgrimageEngine {
     }
 
     /**
-     * Unlocks Grand Pilgrim Blessing if all 4 shrines were visited.
+     * Unlocks Grand Pilgrim Blessing if all 4 shrines were visited in the active 24h cycle, consuming the pilgrimage.
      */
     public static claimGrandPilgrimBlessing(
         player: PlayerPilgrimState,
         currentEpochMs = Date.now()
     ): { success: boolean; blessing?: ActiveDivineBlessing; reason?: string } {
-        if (!player || player.visitedShrines.size < 4) {
-            return { success: false, reason: `Grand pilgrimage requires visiting all 4 shrines. Visited: ${player?.visitedShrines?.size ?? 0}/4.` };
+        if (!player) {
+            return { success: false, reason: "Invalid pilgrim player." };
         }
+
+        // Apply 24h reset before verifying
+        if (currentEpochMs - player.lastPilgrimageResetEpochMs >= 86400000) {
+            player.visitedShrines = new Set();
+            player.lastPilgrimageResetEpochMs = currentEpochMs;
+        }
+
+        if (player.visitedShrines.size < 4) {
+            return { success: false, reason: `Grand pilgrimage requires visiting all 4 shrines in the active daily window. Visited: ${player.visitedShrines.size}/4.` };
+        }
+
+        // Clear active visited shrines upon claim so pilgrimage must be repeated next cycle
+        player.visitedShrines = new Set();
 
         const uuid = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${currentEpochMs}_${Math.random()}`;
         const blessing: ActiveDivineBlessing = {
@@ -157,7 +170,7 @@ export class CelestialShrinePilgrimageEngine {
             playerId: player.playerId,
             shrineType: "GRAND_PILGRIMAGE",
             blessingName: "Aura of the Celestial Avatar",
-            bonusStatValue: 50, // +50 to all core attributes
+            bonusStatValue: 50,
             durationMinutes: 120,
             expiresAtEpochMs: currentEpochMs + 120 * 60 * 1000,
         };
