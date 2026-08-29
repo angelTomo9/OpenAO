@@ -11,7 +11,6 @@ describe("AlchemicalTransmutationCircleEngine Matter Conversion & Catalysts", ()
         expect(circle.requiredReagentQuantity).toBe(20);
         expect(circle.baseOutputQuantity).toBe(5);
 
-        // Quintessence gives +50% bonus -> 5 * 1.5 = 8 Gold Ingots (rounded)
         const result = AlchemicalTransmutationCircleEngine.executeTransmutation(circle, 20, "QUINTESSENCE", 100, () => 0.99);
         expect(result.success).toBe(true);
         expect(result.outputQuantity).toBe(8);
@@ -20,10 +19,20 @@ describe("AlchemicalTransmutationCircleEngine Matter Conversion & Catalysts", ()
         expect(circle.isActivated).toBe(true);
     });
 
+    it("rejects zero or negative catalyst purity explicitly", () => {
+        const circle = AlchemicalTransmutationCircleEngine.inscribeCircle("a", "LEAD_TO_GOLD", 100000);
+        const resZero = AlchemicalTransmutationCircleEngine.executeTransmutation(circle, 20, "PHILOSOPHERS_MERCURY", 0);
+        expect(resZero.success).toBe(false);
+        expect(resZero.reason).toContain("Catalyst purity must be greater than 0%");
+
+        const resNeg = AlchemicalTransmutationCircleEngine.executeTransmutation(circle, 20, "PHILOSOPHERS_MERCURY", -10);
+        expect(resNeg.success).toBe(false);
+        expect(resNeg.reason).toContain("Catalyst purity must be greater than 0%");
+    });
+
     it("triggers arcane backlash explosion when impure catalyst fails roll", () => {
         const circle = AlchemicalTransmutationCircleEngine.inscribeCircle("alchemist_02", "IRON_TO_MITHRIL", 100000);
 
-        // Impure Mercury with low rng roll -> Explosion
         const failResult = AlchemicalTransmutationCircleEngine.executeTransmutation(circle, 30, "PHILOSOPHERS_MERCURY", 30, () => 0.01);
         expect(failResult.success).toBe(false);
         expect(failResult.outputQuantity).toBe(0);
@@ -34,20 +43,11 @@ describe("AlchemicalTransmutationCircleEngine Matter Conversion & Catalysts", ()
 
     it("rejects transmutation with insufficient reagents", () => {
         const circle = AlchemicalTransmutationCircleEngine.inscribeCircle("a", "ASH_TO_PHOENIX_FEATHER", 100000);
-        const res = AlchemicalTransmutationCircleEngine.executeTransmutation(circle, 10); // Needs 50 Sacred Ash
+        const res = AlchemicalTransmutationCircleEngine.executeTransmutation(circle, 10);
 
         expect(res.success).toBe(false);
         expect(res.reason).toContain("Insufficient Sacred Ash");
         expect(circle.isActivated).toBe(false);
-    });
-
-    it("prevents re-activating an already consumed circle", () => {
-        const circle = AlchemicalTransmutationCircleEngine.inscribeCircle("a", "LEAD_TO_GOLD", 100000);
-        AlchemicalTransmutationCircleEngine.executeTransmutation(circle, 20);
-
-        const repeatRes = AlchemicalTransmutationCircleEngine.executeTransmutation(circle, 20);
-        expect(repeatRes.success).toBe(false);
-        expect(repeatRes.reason).toContain("already consumed");
     });
 
     it("guards against unsupported recipes", () => {

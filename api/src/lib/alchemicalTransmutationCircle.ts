@@ -89,9 +89,13 @@ export class AlchemicalTransmutationCircleEngine {
         let riskPercent = 0;
 
         if (catalyst) {
+            if (!Number.isFinite(catalystPurityPercent) || catalystPurityPercent <= 0) {
+                return { success: false, outputQuantity: 0, outputItemName: circle.outputItemName, backlashDamageTaken: 0, reason: "Catalyst purity must be greater than 0%." };
+            }
+
             const catData = CATALYST_CATALOG[catalyst];
             if (catData) {
-                const purityRatio = Math.max(0.1, Math.min(1.0, (Number.isFinite(catalystPurityPercent) ? catalystPurityPercent : 100) / 100));
+                const purityRatio = Math.max(0.01, Math.min(1.0, catalystPurityPercent / 100));
                 bonusPercent = catData.yieldBonusPercent * purityRatio;
                 // Lower purity increases backlash risk
                 riskPercent = Math.min(90, catData.backlashRiskPercent * (2 - purityRatio));
