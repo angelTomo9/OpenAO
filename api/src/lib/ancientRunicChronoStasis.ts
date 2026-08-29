@@ -4,7 +4,7 @@ import crypto from "node:crypto";
  * Ancient Runic Chrono-Stasis, Temporal Distortion & Time-Dilation Field Engine for OpenAO MMORPG.
  * Simulates temporal distortion devices (Chrono Hourglass, Time-Warp Anchor, Singularity Core),
  * area of effect time-dilation bubbles (8 to 16 tiles), friendly Temporal Haste (+50% haste),
- * enemy Chrono Stasis locks (immobilization), field lifespan decay, and mana upkeep.
+ * enemy Chrono Stasis locks (immobilization), field lifespan decay, and mana upkeep starvation.
  */
 
 export type ChronoDeviceType = "CHRONO_HOURGLASS" | "TIME_WARP_ANCHOR" | "SINGULARITY_TEMPORAL_CORE";
@@ -93,14 +93,16 @@ export class AncientRunicChronoStasisEngine {
         let stasisCount = 0;
 
         for (const entity of entities) {
-            if (!entity || !entity.isAlive) continue;
+            if (!entity) continue;
 
-            const dist = Math.hypot(field.centerLocation.x - entity.location.x, field.centerLocation.y - entity.location.y);
-
-            // Fresh pulse: remove existing chrono auras
+            // Fresh pulse: remove existing chrono auras (even for dead entities)
             entity.activeChronoEffects = entity.activeChronoEffects
                 ? entity.activeChronoEffects.filter(e => e !== "TEMPORAL_HASTE_50" && e !== "CHRONO_STASIS_LOCK")
                 : [];
+
+            if (!entity.isAlive) continue;
+
+            const dist = Math.hypot(field.centerLocation.x - entity.location.x, field.centerLocation.y - entity.location.y);
 
             if (dist <= field.fieldRadiusTiles) {
                 if (entity.isFriendlyToCaster) {
@@ -122,15 +124,33 @@ export class AncientRunicChronoStasisEngine {
     }
 
     /**
-     * Ticks field lifespan and consumes caster mana upkeep.
+     * Ticks field lifespan and consumes caster mana upkeep. Collapses if caster runs out of mana.
      */
     public static tickFieldLifespan(
         field: ActiveTimeDilationField,
-        elapsedSeconds = 1
-    ): { success: boolean; remainingSeconds: number; isCollapsed: boolean } {
-        if (!field || !field.isActive) return { success: false, remainingSeconds: 0, isCollapsed: true };
+        elapsedSeconds = 1,
+        availableCasterMana = Number.POSITIVE_INFINITY
+    ): { success: boolean; remainingSeconds: number; remainingMana: number; isCollapsed: boolean; collapseReason?: string } {
+        if (!field || !field.isActive) {
+            return { success: false, remainingSeconds: 0, remainingMana: availableCasterMana, isCollapsed: true, collapseReason: "Field already inactive." };
+        }
 
         const sec = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 1;
+        const deviceData = CHRONO_DEVICE_CATALOG[field.deviceType];
+        const manaCost = sec * deviceData.upkeepManaPerSecond;
+
+        if (Number.isFinite(availableCasterMana) && availableCasterMana < manaCost) {
+            field.isActive = false;
+            return {
+                success: true,
+                remainingSeconds: field.remainingLifespanSeconds,
+                remainingMana: availableCasterMana,
+                isCollapsed: true,
+                collapseReason: `Mana starvation: required ${manaCost} mana, had ${availableCasterMana}.`,
+            };
+        }
+
+        const remainingMana = Number.isFinite(availableCasterMana) ? availableCasterMana - manaCost : availableCasterMana;
         field.remainingLifespanSeconds = Math.max(0, field.remainingLifespanSeconds - sec);
 
         if (field.remainingLifespanSeconds === 0) {
@@ -140,7 +160,9 @@ export class AncientRunicChronoStasisEngine {
         return {
             success: true,
             remainingSeconds: field.remainingLifespanSeconds,
+            remainingMana,
             isCollapsed: !field.isActive,
+            collapseReason: !field.isActive ? "Duration expired." : undefined,
         };
     }
 }

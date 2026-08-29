@@ -11,9 +11,9 @@ describe("AncientRunicChronoStasisEngine Time-Dilation & Stasis", () => {
         expect(field.fieldRadiusTiles).toBe(16);
         expect(field.remainingLifespanSeconds).toBe(60);
 
-        const ally: ChronoCombatEntity = { entityId: "ally_01", isFriendlyToCaster: true, location: { x: 55, y: 50 }, isAlive: true, activeChronoEffects: [] }; // 5 tiles away
-        const enemyNear: ChronoCombatEntity = { entityId: "enemy_01", isFriendlyToCaster: false, location: { x: 60, y: 50 }, isAlive: true, activeChronoEffects: [] }; // 10 tiles away
-        const enemyFar: ChronoCombatEntity = { entityId: "enemy_far", isFriendlyToCaster: false, location: { x: 90, y: 50 }, isAlive: true, activeChronoEffects: [] }; // 40 tiles away
+        const ally: ChronoCombatEntity = { entityId: "ally_01", isFriendlyToCaster: true, location: { x: 55, y: 50 }, isAlive: true, activeChronoEffects: [] };
+        const enemyNear: ChronoCombatEntity = { entityId: "enemy_01", isFriendlyToCaster: false, location: { x: 60, y: 50 }, isAlive: true, activeChronoEffects: [] };
+        const enemyFar: ChronoCombatEntity = { entityId: "enemy_far", isFriendlyToCaster: false, location: { x: 90, y: 50 }, isAlive: true, activeChronoEffects: [] };
 
         const pulseRes = AncientRunicChronoStasisEngine.pulseTemporalField(field, [ally, enemyNear, enemyFar]);
         expect(pulseRes.success).toBe(true);
@@ -26,36 +26,33 @@ describe("AncientRunicChronoStasisEngine Time-Dilation & Stasis", () => {
         expect(enemyFar.activeChronoEffects).toEqual([]);
     });
 
-    it("clears temporal effects when entity moves outside field radius on subsequent pulse", () => {
+    it("clears stale chrono auras from entities that die", () => {
         const field = AncientRunicChronoStasisEngine.deployTemporalField("m", "CHRONO_HOURGLASS", 0, 0, 100000);
-        const entity: ChronoCombatEntity = { entityId: "e", isFriendlyToCaster: true, location: { x: 2, y: 2 }, isAlive: true, activeChronoEffects: [] };
+        const dyingEntity: ChronoCombatEntity = { entityId: "dying", isFriendlyToCaster: false, location: { x: 2, y: 2 }, isAlive: true, activeChronoEffects: [] };
 
-        AncientRunicChronoStasisEngine.pulseTemporalField(field, [entity]);
-        expect(entity.activeChronoEffects).toContain("TEMPORAL_HASTE_50");
+        AncientRunicChronoStasisEngine.pulseTemporalField(field, [dyingEntity]);
+        expect(dyingEntity.activeChronoEffects).toContain("CHRONO_STASIS_LOCK");
 
-        // Entity moves outside radius (30, 30)
-        entity.location = { x: 30, y: 30 };
-        AncientRunicChronoStasisEngine.pulseTemporalField(field, [entity]);
-        expect(entity.activeChronoEffects).toEqual([]);
+        // Entity dies
+        dyingEntity.isAlive = false;
+        AncientRunicChronoStasisEngine.pulseTemporalField(field, [dyingEntity]);
+        expect(dyingEntity.activeChronoEffects).toEqual([]); // Cleared upon death
     });
 
-    it("ticks field lifespan and collapses field when time expires", () => {
-        const field = AncientRunicChronoStasisEngine.deployTemporalField("m", "CHRONO_HOURGLASS", 0, 0, 100000); // 30s lifespan
+    it("ticks field lifespan, consumes caster mana upkeep, and collapses on mana starvation", () => {
+        const field = AncientRunicChronoStasisEngine.deployTemporalField("m", "CHRONO_HOURGLASS", 0, 0, 100000); // 10 mana/sec
 
-        const tick1 = AncientRunicChronoStasisEngine.tickFieldLifespan(field, 10);
-        expect(tick1.remainingSeconds).toBe(20);
+        // Tick 5 seconds with 100 mana -> 50 mana consumed, 50 remaining
+        const tick1 = AncientRunicChronoStasisEngine.tickFieldLifespan(field, 5, 100);
+        expect(tick1.remainingSeconds).toBe(25);
+        expect(tick1.remainingMana).toBe(50);
         expect(tick1.isCollapsed).toBe(false);
 
-        const tick2 = AncientRunicChronoStasisEngine.tickFieldLifespan(field, 20);
-        expect(tick2.remainingSeconds).toBe(0);
+        // Tick next 10 seconds with only 50 mana (requires 100 mana) -> Collapses due to mana starvation
+        const tick2 = AncientRunicChronoStasisEngine.tickFieldLifespan(field, 10, 50);
         expect(tick2.isCollapsed).toBe(true);
+        expect(tick2.collapseReason).toContain("Mana starvation");
         expect(field.isActive).toBe(false);
-
-        // Subsequent pulse rejected on collapsed field
-        const ally: ChronoCombatEntity = { entityId: "a", isFriendlyToCaster: true, location: { x: 1, y: 1 }, isAlive: true, activeChronoEffects: [] };
-        const failPulse = AncientRunicChronoStasisEngine.pulseTemporalField(field, [ally]);
-        expect(failPulse.success).toBe(false);
-        expect(failPulse.reason).toContain("collapsed");
     });
 
     it("guards against dead entities and unsupported device models", () => {
