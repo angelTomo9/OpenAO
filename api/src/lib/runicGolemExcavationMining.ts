@@ -92,10 +92,7 @@ export class RunicGolemExcavationMiningEngine {
         const chassis = GOLEM_CHASSIS_CATALOG[golem.chassisType];
         const minutes = Number.isFinite(elapsedMinutes) ? Math.max(0.1, elapsedMinutes) : 1;
 
-        const oreExtracted = Math.max(1, Math.floor(chassis.miningRatePerMinute * minutes));
-        golem.accumulatedOreCount += oreExtracted;
-
-        // Drain bedrock stability
+        // Drain bedrock stability first
         const stabilityDrain = chassis.stabilityStressPerCycle * minutes;
         golem.bedrockStabilityPercent = Math.max(0, Math.round(golem.bedrockStabilityPercent - stabilityDrain));
 
@@ -106,11 +103,16 @@ export class RunicGolemExcavationMiningEngine {
             isCaveIn = true;
         }
 
+        // Only credit ore if the shaft did not collapse this cycle
+        const oreExtracted = isCaveIn ? 0 : Math.max(1, Math.floor(chassis.miningRatePerMinute * minutes));
+        golem.accumulatedOreCount += oreExtracted;
+
         return {
-            success: true,
+            success: !isCaveIn,
             oreExtractedCount: oreExtracted,
             currentStability: golem.bedrockStabilityPercent,
             isCaveIn,
+            reason: isCaveIn ? "Bedrock collapsed in subterranean cave-in; no ore extracted this cycle." : undefined,
         };
     }
 
@@ -122,6 +124,10 @@ export class RunicGolemExcavationMiningEngine {
     ): { success: boolean; totalGoldPayout: number; oresDeliveredCount: number; reason?: string } {
         if (!golem || golem.accumulatedOreCount <= 0) {
             return { success: false, totalGoldPayout: 0, oresDeliveredCount: 0, reason: "No accumulated ore available in cart." };
+        }
+
+        if (golem.isCollapsedByCaveIn || golem.currentDurabilityHp <= 0) {
+            return { success: false, totalGoldPayout: 0, oresDeliveredCount: 0, reason: "Shaft collapsed; reinforce pillars before dispatching the cart." };
         }
 
         const oreData = ORE_VALUE_CATALOG[golem.targetOre];

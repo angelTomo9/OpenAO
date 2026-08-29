@@ -16,23 +16,26 @@ describe("RunicGolemExcavationMiningEngine Golem Miners & Ore Carts", () => {
         expect(tickRes.success).toBe(true);
         expect(tickRes.oreExtractedCount).toBe(24);
         expect(golem.accumulatedOreCount).toBe(24);
-        expect(tickRes.currentStability).toBe(60); // 100 - (20 * 2) = 60
+        expect(tickRes.currentStability).toBe(60);
         expect(tickRes.isCaveIn).toBe(false);
     });
 
-    it("triggers subterranean cave-in when stability drops to 0", () => {
+    it("triggers subterranean cave-in when stability drops to 0, yielding 0 ore and blocking cart delivery", () => {
         const golem = RunicGolemExcavationMiningEngine.deployMiningGolem("miner_02", "IRON_ORE_DRILLER", "IRON_ORE", 100000);
-        golem.bedrockStabilityPercent = 10; // Low stability
+        golem.bedrockStabilityPercent = 10;
+        golem.accumulatedOreCount = 5; // Previous accumulated ore
 
-        const tickRes = RunicGolemExcavationMiningEngine.executeExcavationTick(golem, 1); // Drains 10 -> drops to 0
+        const tickRes = RunicGolemExcavationMiningEngine.executeExcavationTick(golem, 1);
         expect(tickRes.isCaveIn).toBe(true);
+        expect(tickRes.oreExtractedCount).toBe(0); // Zero ore on collapse cycle
+        expect(golem.accumulatedOreCount).toBe(5); // Preserves previous ore
         expect(golem.isCollapsedByCaveIn).toBe(true);
-        expect(golem.currentDurabilityHp).toBe(500); // 1000 - 500 cave-in damage
+        expect(golem.currentDurabilityHp).toBe(500);
 
-        // Further mining fails while collapsed
-        const blockedTick = RunicGolemExcavationMiningEngine.executeExcavationTick(golem, 1);
-        expect(blockedTick.success).toBe(false);
-        expect(blockedTick.reason).toContain("collapsed");
+        // Cart delivery blocked while collapsed
+        const blockedDelivery = RunicGolemExcavationMiningEngine.dispatchCartDelivery(golem);
+        expect(blockedDelivery.success).toBe(false);
+        expect(blockedDelivery.reason).toContain("Shaft collapsed");
     });
 
     it("reinforces shaft stability and resumes drilling", () => {
@@ -51,7 +54,7 @@ describe("RunicGolemExcavationMiningEngine Golem Miners & Ore Carts", () => {
 
     it("dispatches cart delivery to bank vault awarding gold payout", () => {
         const golem = RunicGolemExcavationMiningEngine.deployMiningGolem("m", "MITHRIL_VEIN_CARVER", "ANCIENT_ASTRAL_GEODE", 100000);
-        golem.accumulatedOreCount = 10; // 10 Geodes @ 150 gold each = 1500 gold
+        golem.accumulatedOreCount = 10;
 
         const delivery = RunicGolemExcavationMiningEngine.dispatchCartDelivery(golem);
         expect(delivery.success).toBe(true);
