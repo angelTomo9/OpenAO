@@ -78,7 +78,7 @@ export class RunicTotemShamanicAttunementEngine {
     }
 
     /**
-     * Checks if all 3 distinct elemental totems are active within mutual resonance range.
+     * Checks if all 3 distinct elemental totems are active within mutual resonance range of the same shaman.
      */
     public static isElementalStormSurgeActive(
         totems: PlacedTotem[],
@@ -87,9 +87,32 @@ export class RunicTotemShamanicAttunementEngine {
         if (!Array.isArray(totems) || totems.length < 3) return false;
 
         const activeTotems = totems.filter(t => t && !t.isDestroyed && t.currentHp > 0 && currentEpochMs < t.expiresEpochMs);
-        const types = new Set(activeTotems.map(t => t.totemType));
 
-        return types.has("EARTHWARDEN_TOTEM") && types.has("WINDFURY_TOTEM") && types.has("TIDAL_WAVE_TOTEM");
+        // Group by shaman
+        const byShaman = new Map<string, PlacedTotem[]>();
+        for (const t of activeTotems) {
+            if (!byShaman.has(t.shamanPlayerId)) byShaman.set(t.shamanPlayerId, []);
+            byShaman.get(t.shamanPlayerId)!.push(t);
+        }
+
+        for (const [, shamanTotems] of byShaman.entries()) {
+            const earth = shamanTotems.find(t => t.totemType === "EARTHWARDEN_TOTEM");
+            const wind = shamanTotems.find(t => t.totemType === "WINDFURY_TOTEM");
+            const water = shamanTotems.find(t => t.totemType === "TIDAL_WAVE_TOTEM");
+
+            if (earth && wind && water) {
+                // Check mutual pairwise distances
+                const dEW = Math.hypot(earth.location.x - wind.location.x, earth.location.y - wind.location.y);
+                const dEWtr = Math.hypot(earth.location.x - water.location.x, earth.location.y - water.location.y);
+                const dWWtr = Math.hypot(wind.location.x - water.location.x, wind.location.y - water.location.y);
+
+                if (dEW <= this.RESONANCE_RADIUS_TILES && dEWtr <= this.RESONANCE_RADIUS_TILES && dWWtr <= this.RESONANCE_RADIUS_TILES) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -102,6 +125,11 @@ export class RunicTotemShamanicAttunementEngine {
     ): { affectedPartyCount: number; isStormSurgeActive: boolean } {
         if (!Array.isArray(totems) || !Array.isArray(partyMembers)) {
             return { affectedPartyCount: 0, isStormSurgeActive: false };
+        }
+
+        // Reset buffs on all members for fresh pulse
+        for (const member of partyMembers) {
+            if (member) member.activeTotemBuffs = {};
         }
 
         const isSurge = this.isElementalStormSurgeActive(totems, currentEpochMs);
@@ -126,7 +154,7 @@ export class RunicTotemShamanicAttunementEngine {
 
                 if (dist <= this.RESONANCE_RADIUS_TILES) {
                     if (!member.activeTotemBuffs) member.activeTotemBuffs = {};
-                    member.activeTotemBuffs[data.statType] = finalValue;
+                    member.activeTotemBuffs[data.statType] = (member.activeTotemBuffs[data.statType] || 0) + finalValue;
                     affectedMembers.add(member.playerId);
                 }
             }
