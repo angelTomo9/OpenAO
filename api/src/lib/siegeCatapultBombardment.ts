@@ -106,8 +106,12 @@ export class SiegeCatapultBombardmentEngine {
             return { success: false, damageDealt: 0, remainingTargetHp: target?.currentHp ?? 0, isBreached: target?.isBreached ?? false, reason: "Siege engine is broken or invalid." };
         }
 
-        if (!target || target.isBreached) {
-            return { success: false, damageDealt: 0, remainingTargetHp: target?.currentHp ?? 0, isBreached: true, reason: "Target fortification is already breached or invalid." };
+        if (!target) {
+            return { success: false, damageDealt: 0, remainingTargetHp: 0, isBreached: false, reason: "Target fortification is invalid." };
+        }
+
+        if (target.isBreached) {
+            return { success: false, damageDealt: 0, remainingTargetHp: target.currentHp, isBreached: true, reason: "Target fortification is already breached." };
         }
 
         const engineData = SIEGE_ENGINE_CATALOG[engine.engineType];
