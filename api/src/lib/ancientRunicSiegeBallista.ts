@@ -102,7 +102,7 @@ export class AncientRunicSiegeBallistaEngine {
         }
 
         if (!target || target.isDestroyed || target.currentHp <= 0) {
-            return { success: false, damageDealt: 0, isStructureDemolished: true, remainingTargetHp: 0, reason: "Target is already destroyed or invalid." };
+            return { success: false, damageDealt: 0, isStructureDemolished: false, remainingTargetHp: 0, reason: "Target is already destroyed or invalid." };
         }
 
         const boltData = BOLT_CATALOG[bolt];
@@ -124,10 +124,8 @@ export class AncientRunicSiegeBallistaEngine {
         }
 
         // Calculate damage
-        let multiplier = 1.0;
-        if (target.targetType === "FORTRESS_STONE_WALL" || target.targetType === "CASTLE_REINFORCED_GATE") {
-            multiplier = boltData.structureDamageMultiplier;
-        }
+        const isStructure = target.targetType === "FORTRESS_STONE_WALL" || target.targetType === "CASTLE_REINFORCED_GATE";
+        let multiplier = isStructure ? boltData.structureDamageMultiplier : 1.0;
 
         let effectiveArmor = target.armorRating;
         if (boltData.specialEffect === "ARMOR_PIERCING_50") {
@@ -145,13 +143,15 @@ export class AncientRunicSiegeBallistaEngine {
 
         if (boltData.specialEffect) {
             if (!target.appliedEffects) target.appliedEffects = [];
-            target.appliedEffects.push(boltData.specialEffect);
+            if (!target.appliedEffects.includes(boltData.specialEffect)) {
+                target.appliedEffects.push(boltData.specialEffect);
+            }
         }
 
         return {
             success: true,
             damageDealt: actualDmg,
-            isStructureDemolished: target.isDestroyed,
+            isStructureDemolished: target.isDestroyed && isStructure,
             appliedEffect: boltData.specialEffect,
             remainingTargetHp: target.currentHp,
         };

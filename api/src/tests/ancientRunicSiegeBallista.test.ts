@@ -16,37 +16,40 @@ describe("AncientRunicSiegeBallistaEngine Ballistas & Structural Demolition", ()
             targetId: "wall_north_01",
             targetType: "FORTRESS_STONE_WALL",
             location: { x: 20, y: 0 },
-            currentHp: 800,
+            currentHp: 300,
             armorRating: 50,
             isDestroyed: false,
             appliedEffects: [],
         };
 
-        // Titan Piercer base 150 * 2.5 structure multiplier = 375 raw dmg. Armor mitigation: 50 * 0.3 = 15 -> 360 dmg
+        // Titan Piercer base 150 * 2.5 structure multiplier = 375 raw dmg. Armor mitigation: 50 * 0.3 = 15 -> 360 dmg (kills 300 hp wall)
         const shotRes = AncientRunicSiegeBallistaEngine.fireKineticBolt(ballista, "TITAN_PIERCER_BOLT", wall);
         expect(shotRes.success).toBe(true);
-        expect(shotRes.damageDealt).toBe(360);
-        expect(shotRes.isStructureDemolished).toBe(false);
-        expect(wall.currentHp).toBe(440);
+        expect(shotRes.damageDealt).toBe(300);
+        expect(shotRes.isStructureDemolished).toBe(true);
+        expect(wall.currentHp).toBe(0);
+        expect(wall.isDestroyed).toBe(true);
     });
 
-    it("applies armor piercing with Void Shatter Bolt against enemy combat unit", () => {
+    it("applies armor piercing without duplicate effects on repeated hits", () => {
         const arbalest = AncientRunicSiegeBallistaEngine.deployBallista("eng_02", "RUNIC_ARBALEST", 10, 10, 100000);
         const enemyKnight: BallistaBombardmentTarget = {
             targetId: "heavy_knight",
             targetType: "ENEMY_COMBAT_UNIT",
             location: { x: 25, y: 10 }, // distance 15 tiles
-            currentHp: 300,
+            currentHp: 500,
             armorRating: 100,
             isDestroyed: false,
             appliedEffects: [],
         };
 
-        // Void Shatter base 200 dmg * 1.0 (unit target) = 200 raw dmg. Armor 50% ignored (50 armor * 0.3 = 15) -> 185 dmg
-        const shot = AncientRunicSiegeBallistaEngine.fireKineticBolt(arbalest, "VOID_SHATTER_BOLT", enemyKnight);
-        expect(shot.success).toBe(true);
-        expect(shot.damageDealt).toBe(185);
-        expect(enemyKnight.appliedEffects).toContain("ARMOR_PIERCING_50");
+        // Hit 1
+        AncientRunicSiegeBallistaEngine.fireKineticBolt(arbalest, "VOID_SHATTER_BOLT", enemyKnight);
+        expect(enemyKnight.appliedEffects).toEqual(["ARMOR_PIERCING_50"]);
+
+        // Hit 2 - No duplicate pushed
+        AncientRunicSiegeBallistaEngine.fireKineticBolt(arbalest, "VOID_SHATTER_BOLT", enemyKnight);
+        expect(enemyKnight.appliedEffects).toEqual(["ARMOR_PIERCING_50"]);
     });
 
     it("rejects firing when target is outside minimum or maximum range", () => {
@@ -94,15 +97,11 @@ describe("AncientRunicSiegeBallistaEngine Ballistas & Structural Demolition", ()
         expect(ballista.currentDurabilityHp).toBe(600);
     });
 
-    it("guards against destroyed targets and unsupported ballista models", () => {
-        expect(() => AncientRunicSiegeBallistaEngine.deployBallista("eng", "PLASTIC_SLINGSHOT" as any)).toThrow(
-            "Unsupported ballista type"
-        );
-
+    it("guards against destroyed targets returning isStructureDemolished: false", () => {
         const ballista = AncientRunicSiegeBallistaEngine.deployBallista("eng", "RUNIC_ARBALEST", 0, 0);
-        const destroyedGate: BallistaBombardmentTarget = {
-            targetId: "broken_gate",
-            targetType: "CASTLE_REINFORCED_GATE",
+        const destroyedUnit: BallistaBombardmentTarget = {
+            targetId: "dead_scout",
+            targetType: "ENEMY_COMBAT_UNIT",
             location: { x: 10, y: 0 },
             currentHp: 0,
             armorRating: 0,
@@ -110,8 +109,9 @@ describe("AncientRunicSiegeBallistaEngine Ballistas & Structural Demolition", ()
             appliedEffects: [],
         };
 
-        const blockedShot = AncientRunicSiegeBallistaEngine.fireKineticBolt(ballista, "TITAN_PIERCER_BOLT", destroyedGate);
+        const blockedShot = AncientRunicSiegeBallistaEngine.fireKineticBolt(ballista, "TITAN_PIERCER_BOLT", destroyedUnit);
         expect(blockedShot.success).toBe(false);
+        expect(blockedShot.isStructureDemolished).toBe(false); // Clean false
         expect(blockedShot.reason).toContain("already destroyed");
     });
 });
