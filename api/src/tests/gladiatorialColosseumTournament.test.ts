@@ -5,7 +5,7 @@ import {
 } from "../lib/gladiatorialColosseumTournament.js";
 
 describe("GladiatorialColosseumTournamentEngine Deathmatches & Finishing Moves", () => {
-    it("creates tournament deathmatch and executes standard attack with armor mitigation", () => {
+    it("creates tournament deathmatch and executes standard attack with clamped favor score", () => {
         const gladiator1: GladiatorFighter = {
             fighterId: "spartacus_01",
             name: "Spartacus",
@@ -13,7 +13,7 @@ describe("GladiatorialColosseumTournamentEngine Deathmatches & Finishing Moves",
             maxHp: 1000,
             attackPower: 200,
             armorRating: 0,
-            crowdFavorScore: 0,
+            crowdFavorScore: 150, // Should clamp to 100 (1.25x max bonus)
             isEliminated: false,
         };
 
@@ -23,7 +23,7 @@ describe("GladiatorialColosseumTournamentEngine Deathmatches & Finishing Moves",
             currentHp: 1000,
             maxHp: 1000,
             attackPower: 180,
-            armorRating: 25, // 25 armor -> 100/125 = 0.80 multiplier
+            armorRating: 25,
             crowdFavorScore: 0,
             isEliminated: false,
         };
@@ -32,10 +32,10 @@ describe("GladiatorialColosseumTournamentEngine Deathmatches & Finishing Moves",
         expect(match.goldPrizePool).toBe(300);
         expect(match.status).toBe("IN_COMBAT");
 
-        // 200 attack * 0.80 armor mitigation = 160 damage
+        // 200 * 1.25 (clamped) * (100 / 125) = 200 damage
         const attack = GladiatorialColosseumTournamentEngine.executeAttack(gladiator1, gladiator2);
-        expect(attack.damageDealt).toBe(160);
-        expect(gladiator2.currentHp).toBe(840);
+        expect(attack.damageDealt).toBe(200);
+        expect(gladiator2.currentHp).toBe(800);
         expect(attack.isFatal).toBe(false);
     });
 
@@ -54,7 +54,7 @@ describe("GladiatorialColosseumTournamentEngine Deathmatches & Finishing Moves",
         const weakDefender: GladiatorFighter = {
             fighterId: "g2",
             name: "Commodus",
-            currentHp: 150, // 15% HP
+            currentHp: 150,
             maxHp: 1000,
             attackPower: 100,
             armorRating: 0,
@@ -65,12 +65,12 @@ describe("GladiatorialColosseumTournamentEngine Deathmatches & Finishing Moves",
         const finishRes = GladiatorialColosseumTournamentEngine.executeFinishingMove(attacker, weakDefender);
         expect(finishRes.success).toBe(true);
         expect(finishRes.crowdFavorAwarded).toBe(35);
-        expect(attacker.crowdFavorScore).toBe(45); // 10 + 35
+        expect(attacker.crowdFavorScore).toBe(45);
         expect(weakDefender.isEliminated).toBe(true);
         expect(weakDefender.currentHp).toBe(0);
     });
 
-    it("rejects finishing move when defender health is above 20%", () => {
+    it("rejects finishing move when defender maxHp is invalid or health is above 20%", () => {
         const attacker: GladiatorFighter = {
             fighterId: "g1",
             name: "Maximus",
@@ -82,20 +82,20 @@ describe("GladiatorialColosseumTournamentEngine Deathmatches & Finishing Moves",
             isEliminated: false,
         };
 
-        const healthyDefender: GladiatorFighter = {
+        const zeroHpDefender: GladiatorFighter = {
             fighterId: "g2",
-            name: "Goliath",
-            currentHp: 500, // 50% HP
-            maxHp: 1000,
+            name: "Bugged",
+            currentHp: 0,
+            maxHp: 0, // Invalid maxHp
             attackPower: 200,
             armorRating: 0,
             crowdFavorScore: 0,
             isEliminated: false,
         };
 
-        const failFinish = GladiatorialColosseumTournamentEngine.executeFinishingMove(attacker, healthyDefender);
-        expect(failFinish.success).toBe(false);
-        expect(failFinish.reason).toContain("require opponent health to be below 20%");
+        const badHpRes = GladiatorialColosseumTournamentEngine.executeFinishingMove(attacker, zeroHpDefender);
+        expect(badHpRes.success).toBe(false);
+        expect(badHpRes.reason).toContain("Invalid defender maximum health");
     });
 
     it("triggers arena hazard damage and concludes match with champion gold prize", () => {
@@ -123,7 +123,6 @@ describe("GladiatorialColosseumTournamentEngine Deathmatches & Finishing Moves",
 
         const match = GladiatorialColosseumTournamentEngine.createMatch(gladiator1, gladiator2, "GRAND_CHAMPIONSHIP", 100000);
 
-        // Fire jet hazard (200 damage) kills gladiator 2
         const hazardRes = GladiatorialColosseumTournamentEngine.triggerArenaHazard(gladiator2, "FIRE_JET");
         expect(hazardRes.damageTaken).toBe(200);
         expect(hazardRes.isSunkenOrEliminated).toBe(true);

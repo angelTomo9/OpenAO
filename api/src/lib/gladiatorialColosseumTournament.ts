@@ -83,8 +83,9 @@ export class GladiatorialColosseumTournamentEngine {
             return { damageDealt: 0, defenderRemainingHp: defender?.currentHp ?? 0, isFatal: defender?.isEliminated ?? true };
         }
 
-        // Crowd favor bonus: Up to +25% extra damage at 100 favor
-        const favorMultiplier = 1 + (attacker.crowdFavorScore / 100) * 0.25;
+        // Clamp crowd favor score strictly to [0, 100]
+        const favorScore = Math.min(100, Math.max(0, Number.isFinite(attacker.crowdFavorScore) ? attacker.crowdFavorScore : 0));
+        const favorMultiplier = 1 + (favorScore / 100) * 0.25;
         const armor = Number.isFinite(defender.armorRating) ? Math.max(0, defender.armorRating) : 0;
         const armorMitigation = 100 / (100 + armor);
 
@@ -94,7 +95,7 @@ export class GladiatorialColosseumTournamentEngine {
         const isFatal = defender.currentHp === 0;
         if (isFatal) {
             defender.isEliminated = true;
-            attacker.crowdFavorScore = Math.min(100, attacker.crowdFavorScore + 15);
+            attacker.crowdFavorScore = Math.min(100, favorScore + 15);
         }
 
         return {
@@ -115,6 +116,10 @@ export class GladiatorialColosseumTournamentEngine {
             return { success: false, crowdFavorAwarded: 0, reason: "Defender is already eliminated or invalid." };
         }
 
+        if (!Number.isFinite(defender.maxHp) || defender.maxHp <= 0) {
+            return { success: false, crowdFavorAwarded: 0, reason: "Invalid defender maximum health value." };
+        }
+
         const hpRatio = defender.currentHp / defender.maxHp;
         if (hpRatio > 0.20) {
             return { success: false, crowdFavorAwarded: 0, reason: "Finishing moves require opponent health to be below 20%." };
@@ -124,7 +129,8 @@ export class GladiatorialColosseumTournamentEngine {
         defender.isEliminated = true;
 
         const favorGain = 35; // Massive crowd roar bonus
-        attacker.crowdFavorScore = Math.min(100, attacker.crowdFavorScore + favorGain);
+        const currentFavor = Math.min(100, Math.max(0, Number.isFinite(attacker.crowdFavorScore) ? attacker.crowdFavorScore : 0));
+        attacker.crowdFavorScore = Math.min(100, currentFavor + favorGain);
 
         return {
             success: true,
