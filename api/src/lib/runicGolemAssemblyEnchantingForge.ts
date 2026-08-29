@@ -23,8 +23,10 @@ export interface AssembledCombatGolem {
     installedCore: ElementalSoulCore;
     currentHp: number;
     maxHp: number;
+    baseAttackPower: number;
     attackPower: number;
     armorRating: number;
+    baseMoveSpeed: number;
     moveSpeed: number;
     coreTemperatureCelsius: number; // 0 to 100
     isOverdriveActive: boolean;
@@ -54,7 +56,12 @@ export class RunicGolemAssemblyEnchantingForgeEngine {
             return { success: false, reason: "Invalid engineer player." };
         }
 
-        if (!Array.isArray(frameComponents) || frameComponents.length < 3) {
+        if (!Array.isArray(frameComponents)) {
+            return { success: false, reason: "Incomplete chassis parts. Requires Exoskeleton, Servo, and Conduit." };
+        }
+
+        const partSet = new Set(frameComponents);
+        if (!partSet.has("TITANIUM_EXOSKELETON") || !partSet.has("HYDRAULIC_ARTICULATION_SERVO") || !partSet.has("ARCANE_POWER_CONDUIT")) {
             return { success: false, reason: "Incomplete chassis parts. Requires Exoskeleton, Servo, and Conduit." };
         }
 
@@ -66,15 +73,20 @@ export class RunicGolemAssemblyEnchantingForgeEngine {
         const uuid = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${currentEpochMs}_${Math.random()}`;
 
         const baseHp = 1000 + coreData.hpBonus;
+        const baseAttack = 60 + coreData.attackBonus;
+        const baseSpeed = 100 + coreData.speedBonus;
+
         const golem: AssembledCombatGolem = {
             golemId: `golem_combat_${soulCore.toLowerCase()}_${uuid}`,
             engineerPlayerId,
             installedCore: soulCore,
             currentHp: baseHp,
             maxHp: baseHp,
-            attackPower: 60 + coreData.attackBonus,
+            baseAttackPower: baseAttack,
+            attackPower: baseAttack,
             armorRating: 25 + coreData.armorBonus,
-            moveSpeed: 100 + coreData.speedBonus,
+            baseMoveSpeed: baseSpeed,
+            moveSpeed: baseSpeed,
             coreTemperatureCelsius: 20, // Ambient room temperature
             isOverdriveActive: false,
             isOverheatedInStasis: false,
@@ -102,14 +114,16 @@ export class RunicGolemAssemblyEnchantingForgeEngine {
         }
 
         golem.isOverdriveActive = true;
-        golem.attackPower = Math.round(golem.attackPower * 1.50);
-        golem.moveSpeed = Math.round(golem.moveSpeed * 1.50);
+        golem.attackPower = Math.round(golem.baseAttackPower * 1.50);
+        golem.moveSpeed = Math.round(golem.baseMoveSpeed * 1.50);
         golem.coreTemperatureCelsius = Math.min(this.MAX_CORE_TEMPERATURE, golem.coreTemperatureCelsius + 45);
 
         let isOverheated = false;
         if (golem.coreTemperatureCelsius >= this.MAX_CORE_TEMPERATURE) {
             golem.isOverheatedInStasis = true;
             golem.isOverdriveActive = false;
+            golem.attackPower = golem.baseAttackPower;
+            golem.moveSpeed = golem.baseMoveSpeed;
             isOverheated = true;
         }
 
@@ -131,6 +145,7 @@ export class RunicGolemAssemblyEnchantingForgeEngine {
             return { success: false, newTemperature: 0, isStasisCleared: false };
         }
 
+        const wasOverheated = golem.isOverheatedInStasis;
         const reduction = Number.isFinite(coolantPurity) ? Math.max(10, coolantPurity) : 50;
         golem.coreTemperatureCelsius = Math.max(20, golem.coreTemperatureCelsius - reduction);
 
@@ -141,7 +156,7 @@ export class RunicGolemAssemblyEnchantingForgeEngine {
         return {
             success: true,
             newTemperature: golem.coreTemperatureCelsius,
-            isStasisCleared: !golem.isOverheatedInStasis,
+            isStasisCleared: wasOverheated && !golem.isOverheatedInStasis,
         };
     }
 }
