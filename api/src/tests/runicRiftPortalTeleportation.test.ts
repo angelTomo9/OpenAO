@@ -30,27 +30,25 @@ describe("RunicRiftPortalTeleportationEngine Gates, Leylines & Teleportation", (
             originGate: "SUNFIRE_SPIRES_GATE",
             destinationGate: "ABYSSAL_DEPTHS_GATE",
             leylineEnergyCharges: 100,
-            riftStabilityPercent: 20, // Low stability
+            riftStabilityPercent: 20,
             isOpen: true,
             createdEpochMs: 100000,
         };
 
         const warrior: TeleportTraveler = { playerId: "w1", playerLevel: 60, currentLocation: { x: 0, y: 0 }, isAlive: true };
 
-        // 1 traveler drops stability by 10% -> 10% (< 20% threshold) -> Spatial Rift Storm scatter
-        const scatterRes = RunicRiftPortalTeleportationEngine.teleportParty(portal, [warrior], () => 0.5); // (0.5 * 11) - 5 = 0 offset
+        const scatterRes = RunicRiftPortalTeleportationEngine.teleportParty(portal, [warrior], () => 0.5);
         expect(scatterRes.success).toBe(true);
         expect(scatterRes.isDestabilizedStorm).toBe(true);
         expect(portal.riftStabilityPercent).toBe(10);
 
-        // Recharge restores charges and stability to 100%
         const recharge = RunicRiftPortalTeleportationEngine.rechargePortalLeyline(portal, 50);
         expect(recharge.success).toBe(true);
         expect(recharge.newStability).toBe(100);
     });
 
     it("rejects travelers below destination level requirement", () => {
-        const portal = RunicRiftPortalTeleportationEngine.openRiftPortal("SUNFIRE_SPIRES_GATE", "ABYSSAL_DEPTHS_GATE", 100); // Req level 50
+        const portal = RunicRiftPortalTeleportationEngine.openRiftPortal("SUNFIRE_SPIRES_GATE", "ABYSSAL_DEPTHS_GATE", 100);
         const noob: TeleportTraveler = { playerId: "noob", playerLevel: 15, currentLocation: { x: 0, y: 0 }, isAlive: true };
 
         const underlevelRes = RunicRiftPortalTeleportationEngine.teleportParty(portal, [noob]);
@@ -64,18 +62,35 @@ describe("RunicRiftPortalTeleportationEngine Gates, Leylines & Teleportation", (
         );
     });
 
-    it("guards against closed portals and empty charges", () => {
+    it("guards against closed portals and insufficient leyline energy charges independently", () => {
         const closedPortal: ActiveRiftPortal = {
             portalId: "c",
             originGate: "SUNFIRE_SPIRES_GATE",
             destinationGate: "CELESTIAL_OBSERVATORY_GATE",
-            leylineEnergyCharges: 5, // Insufficient for 15 cost
+            leylineEnergyCharges: 100,
             riftStabilityPercent: 100,
             isOpen: false,
             createdEpochMs: 100000,
         };
 
         const traveler: TeleportTraveler = { playerId: "t", playerLevel: 50, currentLocation: { x: 0, y: 0 }, isAlive: true };
-        expect(RunicRiftPortalTeleportationEngine.teleportParty(closedPortal, [traveler]).success).toBe(false);
+        const closedRes = RunicRiftPortalTeleportationEngine.teleportParty(closedPortal, [traveler]);
+        expect(closedRes.success).toBe(false);
+        expect(closedRes.reason).toContain("closed");
+
+        // Open portal with insufficient energy charges (< 15)
+        const emptyPortal: ActiveRiftPortal = {
+            portalId: "empty",
+            originGate: "SUNFIRE_SPIRES_GATE",
+            destinationGate: "CELESTIAL_OBSERVATORY_GATE",
+            leylineEnergyCharges: 5, // Requires 15
+            riftStabilityPercent: 100,
+            isOpen: true,
+            createdEpochMs: 100000,
+        };
+
+        const emptyRes = RunicRiftPortalTeleportationEngine.teleportParty(emptyPortal, [traveler]);
+        expect(emptyRes.success).toBe(false);
+        expect(emptyRes.reason).toContain("Insufficient leyline charges");
     });
 });
