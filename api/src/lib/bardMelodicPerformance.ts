@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 /**
  * Bard Melodic Songcraft, Area Aura Buffs & Discordant Screech Engine for OpenAO MMORPG.
  * Simulates bard performance repertoire (Hymn of Valor, Ballad of Swiftness, Requiem, Discordant Screech),
@@ -35,6 +33,15 @@ export interface PartyMember {
     isAlive: boolean;
 }
 
+export interface EnemyTarget {
+    enemyId: string;
+    location: { x: number; y: number };
+    currentHp: number;
+    maxHp: number;
+    isSilenced: boolean;
+    isAlive: boolean;
+}
+
 export interface SongDefinition {
     songType: BardSongType;
     manaCostPerVerse: number;
@@ -67,6 +74,10 @@ export class BardMelodicPerformanceEngine {
         currentEpochMs = Date.now()
     ): { success: boolean; performanceState: BardPerformanceState; reason?: string } {
         if (!bard) return { success: false, performanceState: "RESTING", reason: "Invalid bard." };
+
+        if (bard.performanceState !== "RESTING") {
+            return { success: false, performanceState: bard.performanceState, reason: "Bard is already actively performing a song." };
+        }
 
         const songData = SONG_CATALOG[song];
         if (!songData) return { success: false, performanceState: bard.performanceState, reason: `Unknown song: ${String(song)}` };
@@ -120,18 +131,22 @@ export class BardMelodicPerformanceEngine {
     }
 
     /**
-     * Broadcasts melodic aura buff to party members within the 15-tile resonance radius.
+     * Broadcasts melodic aura buff to friendly party members within the 15-tile resonance radius.
      */
     public static propagateMelodicAura(
         bard: BardPlayer,
         partyMembers: PartyMember[],
         currentEpochMs = Date.now()
-    ): { affectedCount: number; potencyApplied: number } {
+    ): { affectedCount: number; potencyApplied: number; reason?: string } {
         if (!bard || bard.performanceState === "RESTING" || !bard.currentSong || !Array.isArray(partyMembers)) {
-            return { affectedCount: 0, potencyApplied: 0 };
+            return { affectedCount: 0, potencyApplied: 0, reason: "Bard is resting or inputs are invalid." };
         }
 
         const songData = SONG_CATALOG[bard.currentSong];
+        if (songData.isOffensive) {
+            return { affectedCount: 0, potencyApplied: 0, reason: "Offensive songs cannot be propagated as friendly party buffs." };
+        }
+
         const instMult = INSTRUMENT_MULTIPLIERS[bard.instrument] ?? 1.0;
         const crescendoMult = bard.performanceState === "DISCORDANT_CRESCENDO" ? 2.0 : 1.0;
         const totalPotency = Math.round(songData.baseBuffValue * instMult * crescendoMult);
@@ -148,7 +163,7 @@ export class BardMelodicPerformanceEngine {
                 member.activeAuraBuff = {
                     song: bard.currentSong,
                     potencyBonusValue: totalPotency,
-                    expiresAtEpochMs: currentEpochMs + 10000, // 10s buff duration
+                    expiresAtEpochMs: currentEpochMs + 10000,
                 };
                 affected++;
             }
@@ -157,6 +172,47 @@ export class BardMelodicPerformanceEngine {
         return {
             affectedCount: affected,
             potencyApplied: totalPotency,
+        };
+    }
+
+    /**
+     * Unleashes offensive Discordant Screech on enemy targets within sonic radius.
+     */
+    public static unleashDiscordantScreech(
+        bard: BardPlayer,
+        enemies: EnemyTarget[]
+    ): { success: boolean; enemiesHitCount: number; damageDealt: number; reason?: string } {
+        if (!bard || bard.performanceState === "RESTING" || bard.currentSong !== "DISCORDANT_SCREECH" || !Array.isArray(enemies)) {
+            return { success: false, enemiesHitCount: 0, damageDealt: 0, reason: "Bard is not actively performing Discordant Screech." };
+        }
+
+        const songData = SONG_CATALOG.DISCORDANT_SCREECH;
+        const instMult = INSTRUMENT_MULTIPLIERS[bard.instrument] ?? 1.0;
+        const crescendoMult = bard.performanceState === "DISCORDANT_CRESCENDO" ? 2.0 : 1.0;
+        const totalDamage = Math.round(songData.baseBuffValue * instMult * crescendoMult);
+
+        let hitCount = 0;
+        for (const enemy of enemies) {
+            if (!enemy || !enemy.isAlive) continue;
+
+            const dx = bard.location.x - enemy.location.x;
+            const dy = bard.location.y - enemy.location.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (dist <= this.AURA_RADIUS_TILES) {
+                enemy.currentHp = Math.max(0, enemy.currentHp - totalDamage);
+                enemy.isSilenced = true;
+                if (enemy.currentHp === 0) {
+                    enemy.isAlive = false;
+                }
+                hitCount++;
+            }
+        }
+
+        return {
+            success: true,
+            enemiesHitCount: hitCount,
+            damageDealt: totalDamage,
         };
     }
 }

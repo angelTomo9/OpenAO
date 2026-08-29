@@ -3,13 +3,14 @@ import {
     BardMelodicPerformanceEngine,
     BardPlayer,
     PartyMember,
+    EnemyTarget,
 } from "../lib/bardMelodicPerformance.js";
 
 describe("BardMelodicPerformanceEngine Songcraft, Auras & Crescendos", () => {
     it("starts performance with War Horn and propagates Hymn of Valor aura to nearby allies", () => {
         const bard: BardPlayer = {
             playerId: "bard_01",
-            instrument: "WAR_HORN_OF_VALHALLA", // 1.6x multiplier
+            instrument: "WAR_HORN_OF_VALHALLA",
             performanceState: "RESTING",
             location: { x: 50, y: 50 },
             currentMana: 200,
@@ -20,7 +21,7 @@ describe("BardMelodicPerformanceEngine Songcraft, Auras & Crescendos", () => {
 
         const warrior: PartyMember = {
             memberId: "warrior_01",
-            location: { x: 55, y: 50 }, // 5 tiles away (within 15)
+            location: { x: 55, y: 50 },
             currentHp: 1000,
             maxHp: 1000,
             isAlive: true,
@@ -28,7 +29,7 @@ describe("BardMelodicPerformanceEngine Songcraft, Auras & Crescendos", () => {
 
         const mageDistant: PartyMember = {
             memberId: "mage_02",
-            location: { x: 100, y: 50 }, // 50 tiles away (out of range)
+            location: { x: 100, y: 50 },
             currentHp: 600,
             maxHp: 600,
             isAlive: true,
@@ -37,7 +38,12 @@ describe("BardMelodicPerformanceEngine Songcraft, Auras & Crescendos", () => {
         const startRes = BardMelodicPerformanceEngine.startPerformance(bard, "HYMN_OF_VALOR", 100000);
         expect(startRes.success).toBe(true);
         expect(bard.performanceState).toBe("PERFORMING_SONG");
-        expect(bard.currentMana).toBe(175); // 200 - 25
+        expect(bard.currentMana).toBe(175);
+
+        // Cannot restart while already performing
+        const reStart = BardMelodicPerformanceEngine.startPerformance(bard, "BALLAD_OF_SWIFTNESS", 100000);
+        expect(reStart.success).toBe(false);
+        expect(reStart.reason).toContain("already actively performing");
 
         // Propagate aura: Base 40 * 1.6 War Horn = 64 potency
         const auraRes = BardMelodicPerformanceEngine.propagateMelodicAura(bard, [warrior, mageDistant], 100000);
@@ -47,7 +53,7 @@ describe("BardMelodicPerformanceEngine Songcraft, Auras & Crescendos", () => {
         expect(mageDistant.activeAuraBuff).toBeUndefined();
     });
 
-    it("advances chord combos to trigger Harmonic Crescendo doubling aura potency", () => {
+    it("advances chord combos to trigger Harmonic Crescendo and unleashes Discordant Screech on enemies", () => {
         const bard: BardPlayer = {
             playerId: "bard_02",
             instrument: "HARP_OF_THE_SERAPH", // 1.3x multiplier
@@ -59,25 +65,34 @@ describe("BardMelodicPerformanceEngine Songcraft, Auras & Crescendos", () => {
             performanceStartedEpochMs: 0,
         };
 
-        BardMelodicPerformanceEngine.startPerformance(bard, "BALLAD_OF_SWIFTNESS", 100000); // combo = 1
+        BardMelodicPerformanceEngine.startPerformance(bard, "DISCORDANT_SCREECH", 100000); // combo = 1
         BardMelodicPerformanceEngine.playChordVerse(bard); // combo = 2
         const finalVerse = BardMelodicPerformanceEngine.playChordVerse(bard); // combo = 3 -> Crescendo
 
         expect(finalVerse.isCrescendoReady).toBe(true);
         expect(bard.performanceState).toBe("DISCORDANT_CRESCENDO");
 
-        const ally: PartyMember = {
-            memberId: "ally_1",
-            location: { x: 2, y: 2 },
+        const enemy: EnemyTarget = {
+            enemyId: "orc_01",
+            location: { x: 5, y: 5 },
             currentHp: 500,
             maxHp: 500,
+            isSilenced: false,
             isAlive: true,
         };
 
-        // Ballad base 25 * 1.3 Harp * 2.0 Crescendo = 65 potency
-        const aura = BardMelodicPerformanceEngine.propagateMelodicAura(bard, [ally], 100000);
-        expect(aura.potencyApplied).toBe(65);
-        expect(ally.activeAuraBuff?.potencyBonusValue).toBe(65);
+        // Offensive song rejects buffing friendly party
+        const ally: PartyMember = { memberId: "a1", location: { x: 1, y: 1 }, currentHp: 100, maxHp: 100, isAlive: true };
+        const buffRes = BardMelodicPerformanceEngine.propagateMelodicAura(bard, [ally], 100000);
+        expect(buffRes.affectedCount).toBe(0);
+        expect(buffRes.reason).toContain("Offensive songs cannot be propagated");
+
+        // Screech base 120 * 1.3 Harp * 2.0 Crescendo = 312 damage + silence
+        const screechRes = BardMelodicPerformanceEngine.unleashDiscordantScreech(bard, [enemy]);
+        expect(screechRes.success).toBe(true);
+        expect(screechRes.damageDealt).toBe(312);
+        expect(enemy.currentHp).toBe(188); // 500 - 312
+        expect(enemy.isSilenced).toBe(true);
     });
 
     it("halts performance when mana depletes during chord progression", () => {
@@ -92,11 +107,9 @@ describe("BardMelodicPerformanceEngine Songcraft, Auras & Crescendos", () => {
             performanceStartedEpochMs: 0,
         };
 
-        // Hymn costs 25 mana -> 5 mana remaining
         BardMelodicPerformanceEngine.startPerformance(oomBard, "HYMN_OF_VALOR", 100000);
         expect(oomBard.currentMana).toBe(5);
 
-        // Next chord requires 25 mana -> fails and rests
         const failChord = BardMelodicPerformanceEngine.playChordVerse(oomBard);
         expect(failChord.success).toBe(false);
         expect(failChord.reason).toContain("Mana depleted");
