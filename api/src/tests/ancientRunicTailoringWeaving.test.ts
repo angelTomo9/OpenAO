@@ -5,33 +5,41 @@ import {
 } from "../lib/ancientRunicTailoringWeaving.js";
 
 describe("AncientRunicTailoringWeavingEngine Cloth Weaving & Robe Imbuing", () => {
-    it("weaves Stardust Astral Robe on Astral Weaver Loom achieving 100% quality and tracks consumed fibers", () => {
+    it("weaves Stardust Astral Robe on Astral Weaver Loom with independent quality roll and returns spliced remaining fibers", () => {
         const loom = AncientRunicTailoringWeavingEngine.constructLoom("tailor_01", "ASTRAL_WEAVER_LOOM", 100000);
         expect(loom.loomType).toBe("ASTRAL_WEAVER_LOOM");
         expect(loom.currentDurability).toBe(300);
 
+        // Input 3 threads (requires 2)
+        const initialFibers = [
+            "CELESTIAL_STARDUST_THREAD",
+            "CELESTIAL_STARDUST_THREAD",
+            "CELESTIAL_STARDUST_THREAD"
+        ] as any[];
+
         const weaveRes = AncientRunicTailoringWeavingEngine.weaveRobe(
             loom,
             "STARDUST_ASTRAL_ROBE",
-            ["CELESTIAL_STARDUST_THREAD", "CELESTIAL_STARDUST_THREAD"],
-            0.5,
+            initialFibers,
+            0.1, // Safe pass
+            0.5, // Quality roll: 50 + 15 + 35 = 100%
             100000
         );
 
         expect(weaveRes.success).toBe(true);
         expect(weaveRes.tailoredRobe?.recipeType).toBe("STARDUST_ASTRAL_ROBE");
-        expect(weaveRes.tailoredRobe?.weavingQualityPercent).toBe(100); // 50 + 15 + 35 = 100
+        expect(weaveRes.tailoredRobe?.weavingQualityPercent).toBe(100);
         expect(weaveRes.tailoredRobe?.finalArmorRating).toBe(108); // 90 * 1.20 = 108
         expect(weaveRes.tailoredRobe?.finalMaxManaBonus).toBe(180); // 150 * 1.20 = 180
         expect(weaveRes.tailoredRobe?.consumedFiberCount).toBe(2);
         expect(weaveRes.tailoredRobe?.consumedFiberType).toBe("CELESTIAL_STARDUST_THREAD");
-        expect(weaveRes.remainingDurability).toBe(290); // 300 - 10
+        expect(weaveRes.tailoredRobe?.remainingProvidedFibers.length).toBe(1); // 3 - 2 = 1 remaining
+        expect(weaveRes.remainingDurability).toBe(290);
     });
 
     it("rejects weaving when insufficient fibers are provided", () => {
         const loom = AncientRunicTailoringWeavingEngine.constructLoom("tailor_02", "WOODEN_DROP_SPINDLE", 100000);
 
-        // Void Raiment requires 2x VOID_SPIDER_WEB. Only provided 1
         const failRes = AncientRunicTailoringWeavingEngine.weaveRobe(
             loom,
             "VOID_SHADOW_RAIMENT",
@@ -46,7 +54,6 @@ describe("AncientRunicTailoringWeavingEngine Cloth Weaving & Robe Imbuing", () =
     it("handles snapped thread failure roll consuming durability", () => {
         const loom = AncientRunicTailoringWeavingEngine.constructLoom("tailor_03", "WOODEN_DROP_SPINDLE", 100000); // 85% success
 
-        // Roll 0.95 (95 > 85%) -> Snapped
         const snap = AncientRunicTailoringWeavingEngine.weaveRobe(
             loom,
             "ARCANIST_APPRENTICE_VESTMENT",
@@ -56,7 +63,7 @@ describe("AncientRunicTailoringWeavingEngine Cloth Weaving & Robe Imbuing", () =
 
         expect(snap.success).toBe(false);
         expect(snap.reason).toContain("threads snapped");
-        expect(loom.currentDurability).toBe(60); // 70 - 10
+        expect(loom.currentDurability).toBe(60);
     });
 
     it("maintains loom tension and restores weaving durability", () => {

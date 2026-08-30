@@ -5,7 +5,7 @@ import crypto from "node:crypto";
  * Simulates tailoring looms (Wooden Drop Spindle, Runic Loom Frame, Astral Weaver Loom),
  * raw textile fibers (Silk Moth Cocoon, Void Spider Web, Celestial Stardust Thread),
  * mage robes (Arcanist Apprentice Vestment, Void Shadow Raiment, Stardust Astral Robe),
- * weaving quality ratings (0% to 100%), mana & armor stat scalings, material consumption tracking, and loom maintenance.
+ * independent weaving quality ratings (0% to 100%), mana & armor stat scalings, remaining fiber inventory splicing, and loom maintenance.
  */
 
 export type TailoringLoomType = "WOODEN_DROP_SPINDLE" | "RUNIC_LOOM_FRAME" | "ASTRAL_WEAVER_LOOM";
@@ -46,6 +46,7 @@ export interface InscribedTailoredRobe {
     weavingQualityPercent: number; // 0 to 100
     consumedFiberCount: number;
     consumedFiberType: TextileFiberType;
+    remainingProvidedFibers: TextileFiberType[];
     wovenEpochMs: number;
 }
 
@@ -91,13 +92,14 @@ export class AncientRunicTailoringWeavingEngine {
     }
 
     /**
-     * Weaves and tailors a mage robe from raw textile fibers.
+     * Weaves and tailors a mage robe from raw textile fibers with independent quality draw and fiber array consumption.
      */
     public static weaveRobe(
         loom: ActiveTailoringLoom,
         recipeType: TailoredRobeRecipeType,
         providedFibers: TextileFiberType[],
         weaveRoll = Math.random(),
+        qualityRoll = Math.random(),
         currentEpochMs = Date.now()
     ): { success: boolean; tailoredRobe?: InscribedTailoredRobe; remainingDurability: number; reason?: string } {
         if (!loom || !loom.isThreaded || loom.currentDurability < this.DURABILITY_COST_PER_WEAVE) {
@@ -146,12 +148,23 @@ export class AncientRunicTailoringWeavingEngine {
             };
         }
 
-        // Calculate weaving quality score (0% to 100%)
-        const qualityScore = Math.max(0, Math.min(100, Math.round(50 + (safeRoll * 30) + loomData.stitchingBonusPercent)));
+        // Calculate independent weaving quality score (0% to 100%)
+        const safeQualityRoll = Number.isFinite(qualityRoll) ? Math.max(0, Math.min(1, qualityRoll)) : Math.random();
+        const qualityScore = Math.max(0, Math.min(100, Math.round(50 + (safeQualityRoll * 30) + loomData.stitchingBonusPercent)));
         const qualityMultiplier = 0.8 + ((qualityScore / 100) * 0.4); // 0.8 to 1.2x
 
         const finalArmor = Math.round(recipe.baseArmorRating * qualityMultiplier);
         const finalMana = Math.round(recipe.baseMaxManaBonus * qualityMultiplier);
+
+        // Splice consumed fibers out of a cloned array
+        const remainingFibers = [...providedFibers];
+        let removed = 0;
+        for (let i = remainingFibers.length - 1; i >= 0 && removed < recipe.requiredFiberCount; i--) {
+            if (remainingFibers[i] === recipe.requiredFiberType) {
+                remainingFibers.splice(i, 1);
+                removed++;
+            }
+        }
 
         const uuid = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${currentEpochMs}_${Math.random()}`;
 
@@ -163,6 +176,7 @@ export class AncientRunicTailoringWeavingEngine {
             weavingQualityPercent: qualityScore,
             consumedFiberCount: recipe.requiredFiberCount,
             consumedFiberType: recipe.requiredFiberType,
+            remainingProvidedFibers: remainingFibers,
             wovenEpochMs: currentEpochMs,
         };
 
