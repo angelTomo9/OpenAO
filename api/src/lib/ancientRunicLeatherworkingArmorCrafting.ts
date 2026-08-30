@@ -131,7 +131,8 @@ export class AncientRunicLeatherworkingArmorCraftingEngine {
         }
 
         const rackData = RACK_CATALOG[rack.rackType];
-        const rollPercent = (Number.isFinite(craftRoll) ? Math.max(0, Math.min(1, craftRoll)) : Math.random()) * 100;
+        const safeRoll = Number.isFinite(craftRoll) ? Math.max(0, Math.min(1, craftRoll)) : Math.random();
+        const rollPercent = safeRoll * 100;
 
         if (rollPercent > rackData.baseSuccessRatePercent) {
             return {
@@ -141,8 +142,8 @@ export class AncientRunicLeatherworkingArmorCraftingEngine {
             };
         }
 
-        // Calculate masterwork stitching quality (base 50 + roll * 30 + rack bonus)
-        const qualityScore = Math.min(100, Math.round(50 + (craftRoll * 30) + rackData.stitchingQualityBonusPercent));
+        // Calculate masterwork stitching quality using safeRoll clamped on both bounds
+        const qualityScore = Math.max(0, Math.min(100, Math.round(50 + (safeRoll * 30) + rackData.stitchingQualityBonusPercent)));
         const qualityMultiplier = 0.8 + (qualityScore / 100 * 0.4); // 0.8 to 1.2x
 
         const finalDef = Math.round(recipe.baseArmorDefense * qualityMultiplier);
