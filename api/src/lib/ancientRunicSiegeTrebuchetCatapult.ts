@@ -5,7 +5,7 @@ import crypto from "node:crypto";
  * Simulates siege engines (Iron Catapult, Runic Trebuchet, Celestial Gravity Mortar),
  * siege munitions (Incendiary Pitch Orb, Kinetic Stone Boulder, Void Arc Shatter Sphere),
  * structural demolition multiplier scaling (2.5x to 5.0x), ballistic trajectory range checks,
- * area-of-effect splash damage (splashRadiusTiles), structural collapse triggers, and counterweight tension repairs.
+ * area-of-effect splash damage with target armor calculations, structural collapse triggers, and counterweight tension repairs.
  */
 
 export type SiegeArtilleryType = "IRON_SIEGE_CATAPULT" | "RUNIC_HEAVY_TREBUCHET" | "CELESTIAL_GRAVITY_MORTAR";
@@ -56,7 +56,7 @@ export interface ArtilleryBombardmentResult {
     strikeId: string;
     impactLocation: { x: number; y: number };
     directDamageDealt: number;
-    splashDamageDealt: number;
+    splashDamageDealt: number; // Aggregate total splash damage inflicted across all affected structures
     splashTargetsAffected: number;
     targetRemainingHealth: number;
     isTargetCollapsed: boolean;
@@ -117,7 +117,7 @@ export class AncientRunicSiegeTrebuchetCatapultEngine {
     }
 
     /**
-     * Bombards a fortification structure with ballistic trajectory and splash damage calculations.
+     * Bombards a fortification structure with ballistic trajectory and per-structure splash calculations.
      */
     public static bombardStructure(
         artillery: ActiveSiegeArtillery,
@@ -172,19 +172,25 @@ export class AncientRunicSiegeTrebuchetCatapultEngine {
             target.isCollapsed = true;
         }
 
-        // Calculate area splash damage on nearby structures within splashRadiusTiles
+        // Calculate area splash damage on nearby structures within splashRadiusTiles evaluated with each target's own armor
         let splashTargetsCount = 0;
-        const splashDamage = Math.round(finalDemolitionDmg * 0.40); // 40% splash damage
+        let totalSplashInflicted = 0;
+        const rawSplashDmg = rawDemolitionDmg * 0.40; // 40% raw splash damage
 
         if (Array.isArray(nearbyStructures)) {
             for (const nearby of nearbyStructures) {
                 if (nearby && !nearby.isCollapsed && nearby.targetId !== target.targetId) {
                     const splashDist = Math.hypot(nearby.location.x - target.location.x, nearby.location.y - target.location.y);
                     if (splashDist <= munitionData.splashRadiusTiles) {
-                        nearby.currentHealth = Math.max(0, nearby.currentHealth - splashDamage);
+                        const nearbyData = STRUCTURE_CATALOG[nearby.structureType];
+                        const nearbyArmor = nearbyData ? (nearbyData.armorReductionPercent / 100) : 0;
+                        const nearbySplashDmg = Math.max(10, Math.round(rawSplashDmg * (1 - nearbyArmor)));
+
+                        nearby.currentHealth = Math.max(0, nearby.currentHealth - nearbySplashDmg);
                         if (nearby.currentHealth === 0) {
                             nearby.isCollapsed = true;
                         }
+                        totalSplashInflicted += nearbySplashDmg;
                         splashTargetsCount++;
                     }
                 }
@@ -199,7 +205,7 @@ export class AncientRunicSiegeTrebuchetCatapultEngine {
             strikeId: `strike_${uuid}`,
             impactLocation: { ...target.location },
             directDamageDealt: finalDemolitionDmg,
-            splashDamageDealt: splashDamage,
+            splashDamageDealt: totalSplashInflicted,
             splashTargetsAffected: splashTargetsCount,
             targetRemainingHealth: target.currentHealth,
             isTargetCollapsed: target.isCollapsed,

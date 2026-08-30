@@ -6,7 +6,7 @@ import {
 } from "../lib/ancientRunicSiegeTrebuchetCatapult.js";
 
 describe("AncientRunicSiegeTrebuchetCatapultEngine Heavy Demolition Artillery", () => {
-    it("bombards Obsidian Citadel Wall with Celestial Gravity Mortar and damages nearby palisade with 8-tile splash radius", () => {
+    it("bombards Obsidian Citadel Wall with Celestial Gravity Mortar and damages nearby palisade with own armor reduction", () => {
         const mortar = AncientRunicSiegeTrebuchetCatapultEngine.deployArtillery("commander_01", "CELESTIAL_GRAVITY_MORTAR", 0, 0, 100000);
         expect(mortar.artilleryType).toBe("CELESTIAL_GRAVITY_MORTAR");
         expect(mortar.currentDurability).toBe(350);
@@ -22,14 +22,15 @@ describe("AncientRunicSiegeTrebuchetCatapultEngine Heavy Demolition Artillery", 
 
         const nearbyPalisade: FortificationTarget = {
             targetId: "palisade_near",
-            structureType: "WOODEN_PALISADE",
+            structureType: "WOODEN_PALISADE", // 10% armor
             location: { x: 54, y: 0 }, // 4 tiles away <= 8 tile splash radius
-            currentHealth: 1000,
-            maxHealth: 1000,
+            currentHealth: 2000,
+            maxHealth: 2000,
             isCollapsed: false,
         };
 
-        // Direct 2700 dmg -> Citadel collapses. 40% splash = 1080 dmg -> Palisade collapses
+        // Raw dmg 4500. Direct (40% wall armor) = 2700 -> Citadel collapses.
+        // Raw splash 1800. Palisade (10% armor) = 1620 dmg.
         const strikeRes = AncientRunicSiegeTrebuchetCatapultEngine.bombardStructure(
             mortar,
             citadelWall,
@@ -40,11 +41,11 @@ describe("AncientRunicSiegeTrebuchetCatapultEngine Heavy Demolition Artillery", 
 
         expect(strikeRes.success).toBe(true);
         expect(strikeRes.result?.directDamageDealt).toBe(2700);
-        expect(strikeRes.result?.splashDamageDealt).toBe(1080);
+        expect(strikeRes.result?.splashDamageDealt).toBe(1620);
         expect(strikeRes.result?.splashTargetsAffected).toBe(1);
         expect(strikeRes.result?.isTargetCollapsed).toBe(true);
         expect(citadelWall.isCollapsed).toBe(true);
-        expect(nearbyPalisade.isCollapsed).toBe(true);
+        expect(nearbyPalisade.currentHealth).toBe(380); // 2000 - 1620
         expect(mortar.currentDurability).toBe(338);
     });
 
