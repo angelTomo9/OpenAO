@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 /**
  * Ancient Runic Shadow Stealth, Camouflage & Infiltration Engine for OpenAO MMORPG.
  * Simulates rogue shadow stealth cloaks (Shadowveil Shroud, Umbral Stalker, Void Phantom Cowl),
@@ -73,7 +71,7 @@ export class AncientRunicShadowStealthInfiltrationEngine {
     }
 
     /**
-     * Checks if a guard detects the stealthed rogue based on vision cone, distance, and ambient light level.
+     * Checks if a guard detects the rogue based on vision cone, distance, ambient light level, and stealth.
      */
     public static isRogueDetectedByGuard(
         rogue: InfiltrationRogue,
@@ -81,7 +79,7 @@ export class AncientRunicShadowStealthInfiltrationEngine {
         ambientLightLevel = 50,
         isInsideSmokeScreen = false
     ): boolean {
-        if (!rogue || !rogue.isStealthed || !guard || !guard.isAlive) {
+        if (!rogue || !guard || !guard.isAlive) {
             return false;
         }
 
@@ -99,7 +97,7 @@ export class AncientRunicShadowStealthInfiltrationEngine {
 
         // Angle from guard to rogue
         const angleRad = Math.atan2(dy, dx);
-        let angleDeg = (angleRad * (180 / Math.PI) + 360) % 360;
+        const angleDeg = (angleRad * (180 / Math.PI) + 360) % 360;
 
         const facing = (guard.facingAngleDegrees % 360 + 360) % 360;
         const angleDiff = Math.min(Math.abs(angleDeg - facing), 360 - Math.abs(angleDeg - facing));
@@ -108,7 +106,12 @@ export class AncientRunicShadowStealthInfiltrationEngine {
             return false; // Rogue is behind or outside guard vision cone
         }
 
-        // Inside vision cone: check perception vs stealth modified by light level
+        // Non-stealthed rogue in vision cone is always detected
+        if (!rogue.isStealthed) {
+            return true;
+        }
+
+        // Inside vision cone while stealthed: check perception vs stealth modified by light level
         const cloak = CLOAK_CATALOG[rogue.cloakType];
         const light = Math.max(0, Math.min(100, Number.isFinite(ambientLightLevel) ? ambientLightLevel : 50));
 
