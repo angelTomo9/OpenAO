@@ -143,7 +143,7 @@ export class AncientRunicFarmingAgricultureHarvestingEngine {
     }
 
     /**
-     * Ticks growth progression timer for a planted crop.
+     * Ticks growth progression timer for a planted crop with scaled SPROUT threshold.
      */
     public static tickCropGrowth(
         plot: ActiveFarmingPlot,
@@ -156,9 +156,12 @@ export class AncientRunicFarmingAgricultureHarvestingEngine {
         const sec = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 1;
         plot.plantedCrop.remainingGrowthSeconds = Math.max(0, plot.plantedCrop.remainingGrowthSeconds - sec);
 
+        const plotData = PLOT_CATALOG[plot.plotType];
+        const scaledDuration = (CROP_CATALOG[plot.plantedCrop.cropType].baseGrowthDurationSeconds / (plotData?.growthSpeedMultiplier ?? 1.0));
+
         if (plot.plantedCrop.remainingGrowthSeconds === 0) {
             plot.plantedCrop.stage = "MATURE_HARVESTABLE";
-        } else if (plot.plantedCrop.remainingGrowthSeconds <= (CROP_CATALOG[plot.plantedCrop.cropType].baseGrowthDurationSeconds * 0.5)) {
+        } else if (plot.plantedCrop.remainingGrowthSeconds <= (scaledDuration * 0.5)) {
             plot.plantedCrop.stage = "SPROUT";
         }
 

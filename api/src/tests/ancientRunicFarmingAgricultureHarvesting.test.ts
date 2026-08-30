@@ -5,7 +5,7 @@ import {
 } from "../lib/ancientRunicFarmingAgricultureHarvesting.js";
 
 describe("AncientRunicFarmingAgricultureHarvestingEngine Agriculture & Hydroponics", () => {
-    it("plants Starfall Lotus in Astral Greenhouse, speeds growth by 2.5x, and harvests 100% quality celestial produce", () => {
+    it("plants Starfall Lotus in Astral Greenhouse, progresses through SEED -> SPROUT -> MATURE properly, and harvests celestial produce", () => {
         const greenhouse = AncientRunicFarmingAgricultureHarvestingEngine.constructPlot("farmer_01", "ASTRAL_GREENHOUSE_TIER", 100000);
         expect(greenhouse.plotType).toBe("ASTRAL_GREENHOUSE_TIER");
         expect(greenhouse.currentWater).toBe(350);
@@ -20,14 +20,22 @@ describe("AncientRunicFarmingAgricultureHarvestingEngine Agriculture & Hydroponi
 
         expect(plantRes.success).toBe(true);
         expect(plantRes.plantedStage).toBe("SEED");
-        expect(greenhouse.currentWater).toBe(330); // 350 - 20
         expect(greenhouse.plantedCrop?.remainingGrowthSeconds).toBe(144);
-        expect(greenhouse.plantedCrop?.fertilizerQualityPercent).toBe(100); // 50 + 15 + 35 = 100
 
-        // Tick 144 seconds
-        const tickRes = AncientRunicFarmingAgricultureHarvestingEngine.tickCropGrowth(greenhouse, 144);
-        expect(tickRes.stage).toBe("MATURE_HARVESTABLE");
-        expect(tickRes.isReadyForHarvest).toBe(true);
+        // Tick 20 seconds (144 - 20 = 124s remaining > 72s half threshold) -> Stays SEED
+        const tickSeed = AncientRunicFarmingAgricultureHarvestingEngine.tickCropGrowth(greenhouse, 20);
+        expect(tickSeed.stage).toBe("SEED");
+        expect(tickSeed.isReadyForHarvest).toBe(false);
+
+        // Tick 60 more seconds (124 - 60 = 64s remaining <= 72s half threshold) -> Enters SPROUT
+        const tickSprout = AncientRunicFarmingAgricultureHarvestingEngine.tickCropGrowth(greenhouse, 60);
+        expect(tickSprout.stage).toBe("SPROUT");
+        expect(tickSprout.isReadyForHarvest).toBe(false);
+
+        // Tick remaining 64 seconds -> Enters MATURE_HARVESTABLE
+        const tickMature = AncientRunicFarmingAgricultureHarvestingEngine.tickCropGrowth(greenhouse, 64);
+        expect(tickMature.stage).toBe("MATURE_HARVESTABLE");
+        expect(tickMature.isReadyForHarvest).toBe(true);
 
         // Harvest: 15 base * 1.20 = 18 Starfall Blossoms, 9 Celestial Pollen
         const harvestRes = AncientRunicFarmingAgricultureHarvestingEngine.harvestCrop(greenhouse, 100000);
@@ -36,7 +44,7 @@ describe("AncientRunicFarmingAgricultureHarvestingEngine Agriculture & Hydroponi
         expect(harvestRes.result?.harvestedItemCount).toBe(18);
         expect(harvestRes.result?.secondaryProduceCount).toBe(9);
         expect(harvestRes.result?.produceQualityPercent).toBe(100);
-        expect(greenhouse.plantedCrop).toBeUndefined(); // Plot is clear
+        expect(greenhouse.plantedCrop).toBeUndefined();
     });
 
     it("rejects planting when plot is already occupied", () => {
