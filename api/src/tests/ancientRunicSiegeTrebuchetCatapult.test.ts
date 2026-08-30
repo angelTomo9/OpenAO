@@ -6,7 +6,7 @@ import {
 } from "../lib/ancientRunicSiegeTrebuchetCatapult.js";
 
 describe("AncientRunicSiegeTrebuchetCatapultEngine Heavy Demolition Artillery", () => {
-    it("bombards Obsidian Citadel Wall with Celestial Gravity Mortar dealing 5.0x demolition damage and collapses wall", () => {
+    it("bombards Obsidian Citadel Wall with Celestial Gravity Mortar and damages nearby palisade with 8-tile splash radius", () => {
         const mortar = AncientRunicSiegeTrebuchetCatapultEngine.deployArtillery("commander_01", "CELESTIAL_GRAVITY_MORTAR", 0, 0, 100000);
         expect(mortar.artilleryType).toBe("CELESTIAL_GRAVITY_MORTAR");
         expect(mortar.currentDurability).toBe(350);
@@ -14,34 +14,46 @@ describe("AncientRunicSiegeTrebuchetCatapultEngine Heavy Demolition Artillery", 
         const citadelWall: FortificationTarget = {
             targetId: "wall_citadel_01",
             structureType: "OBSIDIAN_CITADEL_WALL",
-            location: { x: 50, y: 0 }, // 50 tiles distance (within 15-90 range)
+            location: { x: 50, y: 0 },
             currentHealth: 2500,
             maxHealth: 8000,
             isCollapsed: false,
         };
 
-        // Void Arc munition: 450 base * 5.0 mortar * 2.0 structure bonus = 4500 raw damage * (1 - 0.40 armor) = 2700 damage
+        const nearbyPalisade: FortificationTarget = {
+            targetId: "palisade_near",
+            structureType: "WOODEN_PALISADE",
+            location: { x: 54, y: 0 }, // 4 tiles away <= 8 tile splash radius
+            currentHealth: 1000,
+            maxHealth: 1000,
+            isCollapsed: false,
+        };
+
+        // Direct 2700 dmg -> Citadel collapses. 40% splash = 1080 dmg -> Palisade collapses
         const strikeRes = AncientRunicSiegeTrebuchetCatapultEngine.bombardStructure(
             mortar,
             citadelWall,
             "VOID_ARC_SHATTER_SPHERE",
+            [nearbyPalisade],
             100000
         );
 
         expect(strikeRes.success).toBe(true);
         expect(strikeRes.result?.directDamageDealt).toBe(2700);
-        expect(strikeRes.result?.targetRemainingHealth).toBe(0);
+        expect(strikeRes.result?.splashDamageDealt).toBe(1080);
+        expect(strikeRes.result?.splashTargetsAffected).toBe(1);
         expect(strikeRes.result?.isTargetCollapsed).toBe(true);
         expect(citadelWall.isCollapsed).toBe(true);
-        expect(mortar.currentDurability).toBe(338); // 350 - 12
+        expect(nearbyPalisade.isCollapsed).toBe(true);
+        expect(mortar.currentDurability).toBe(338);
     });
 
     it("rejects bombardment when target is out of ballistic firing range", () => {
-        const catapult = AncientRunicSiegeTrebuchetCatapultEngine.deployArtillery("c_02", "IRON_SIEGE_CATAPULT", 0, 0); // Max range 40
+        const catapult = AncientRunicSiegeTrebuchetCatapultEngine.deployArtillery("c_02", "IRON_SIEGE_CATAPULT", 0, 0);
         const farGate: FortificationTarget = {
             targetId: "gate_01",
             structureType: "STONE_FORTRESS_GATE",
-            location: { x: 80, y: 0 }, // 80 tiles > 40 max
+            location: { x: 80, y: 0 },
             currentHealth: 3500,
             maxHealth: 3500,
             isCollapsed: false,

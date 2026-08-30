@@ -5,7 +5,7 @@ import crypto from "node:crypto";
  * Simulates siege engines (Iron Catapult, Runic Trebuchet, Celestial Gravity Mortar),
  * siege munitions (Incendiary Pitch Orb, Kinetic Stone Boulder, Void Arc Shatter Sphere),
  * structural demolition multiplier scaling (2.5x to 5.0x), ballistic trajectory range checks,
- * structural collapse triggers, and counterweight tension repairs.
+ * area-of-effect splash damage (splashRadiusTiles), structural collapse triggers, and counterweight tension repairs.
  */
 
 export type SiegeArtilleryType = "IRON_SIEGE_CATAPULT" | "RUNIC_HEAVY_TREBUCHET" | "CELESTIAL_GRAVITY_MORTAR";
@@ -56,6 +56,8 @@ export interface ArtilleryBombardmentResult {
     strikeId: string;
     impactLocation: { x: number; y: number };
     directDamageDealt: number;
+    splashDamageDealt: number;
+    splashTargetsAffected: number;
     targetRemainingHealth: number;
     isTargetCollapsed: boolean;
     remainingDurability: number;
@@ -115,12 +117,13 @@ export class AncientRunicSiegeTrebuchetCatapultEngine {
     }
 
     /**
-     * Bombards a fortification structure with ballistic trajectory calculations.
+     * Bombards a fortification structure with ballistic trajectory and splash damage calculations.
      */
     public static bombardStructure(
         artillery: ActiveSiegeArtillery,
         target: FortificationTarget,
         munitionType: SiegeMunitionType,
+        nearbyStructures: FortificationTarget[] = [],
         currentEpochMs = Date.now()
     ): { success: boolean; result?: ArtilleryBombardmentResult; reason?: string } {
         if (!artillery || !artillery.isOperational || artillery.currentDurability < this.DURABILITY_LOSS_PER_BOMBARDMENT) {
@@ -131,12 +134,16 @@ export class AncientRunicSiegeTrebuchetCatapultEngine {
             return { success: false, reason: "Target structure is already destroyed or invalid." };
         }
 
+        const artilleryData = ARTILLERY_CATALOG[artillery.artilleryType];
+        if (!artilleryData) {
+            return { success: false, reason: `Unknown artillery type: ${String(artillery.artilleryType)}` };
+        }
+
         const munitionData = MUNITION_CATALOG[munitionType];
         if (!munitionData) {
             return { success: false, reason: `Unknown munition type: ${String(munitionType)}` };
         }
 
-        const artilleryData = ARTILLERY_CATALOG[artillery.artilleryType];
         const distTiles = Math.hypot(target.location.x - artillery.location.x, target.location.y - artillery.location.y);
 
         if (distTiles < artilleryData.minRangeTiles || distTiles > artilleryData.maxRangeTiles) {
@@ -156,13 +163,32 @@ export class AncientRunicSiegeTrebuchetCatapultEngine {
         const structData = STRUCTURE_CATALOG[target.structureType];
         const armorReduction = structData ? (structData.armorReductionPercent / 100) : 0;
 
-        // Calculate demolition damage
+        // Calculate direct demolition damage
         const rawDemolitionDmg = munitionData.baseKineticDamage * artilleryData.demolitionMultiplier * munitionData.structureBonusMultiplier;
         const finalDemolitionDmg = Math.max(10, Math.round(rawDemolitionDmg * (1 - armorReduction)));
 
         target.currentHealth = Math.max(0, target.currentHealth - finalDemolitionDmg);
         if (target.currentHealth === 0) {
             target.isCollapsed = true;
+        }
+
+        // Calculate area splash damage on nearby structures within splashRadiusTiles
+        let splashTargetsCount = 0;
+        const splashDamage = Math.round(finalDemolitionDmg * 0.40); // 40% splash damage
+
+        if (Array.isArray(nearbyStructures)) {
+            for (const nearby of nearbyStructures) {
+                if (nearby && !nearby.isCollapsed && nearby.targetId !== target.targetId) {
+                    const splashDist = Math.hypot(nearby.location.x - target.location.x, nearby.location.y - target.location.y);
+                    if (splashDist <= munitionData.splashRadiusTiles) {
+                        nearby.currentHealth = Math.max(0, nearby.currentHealth - splashDamage);
+                        if (nearby.currentHealth === 0) {
+                            nearby.isCollapsed = true;
+                        }
+                        splashTargetsCount++;
+                    }
+                }
+            }
         }
 
         // Flight time: ~0.15s per tile
@@ -173,6 +199,8 @@ export class AncientRunicSiegeTrebuchetCatapultEngine {
             strikeId: `strike_${uuid}`,
             impactLocation: { ...target.location },
             directDamageDealt: finalDemolitionDmg,
+            splashDamageDealt: splashDamage,
+            splashTargetsAffected: splashTargetsCount,
             targetRemainingHealth: target.currentHealth,
             isTargetCollapsed: target.isCollapsed,
             remainingDurability: artillery.currentDurability,
