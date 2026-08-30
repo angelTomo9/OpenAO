@@ -4,7 +4,7 @@ import crypto from "node:crypto";
  * Ancient Runic Pet Companion Breeding, Genetic Egg Incubation & Familiar Evolution Engine for OpenAO MMORPG.
  * Simulates companion species (Dire Wolf Pup, Ember Phoenix Hatchling, Void Stalker Whelp),
  * incubator nests (Earthen Nest, Magma Incubator, Celestial Astral Cradle),
- * genetic trait inheritance (Attack Power, Movement Speed, Armor Defense),
+ * genetic trait inheritance (Attack Power, Movement Speed, Armor Defense) with species stat caps preventing inflation,
  * incubation timers, and familiar evolution tiers (BABY -> JUVENILE -> ANCIENT_FAMILIAR).
  */
 
@@ -64,6 +64,8 @@ export const NEST_CATALOG: Record<IncubatorNestType, IncubatorNestData> = {
 };
 
 export class AncientRunicPetCompanionBreedingEngine {
+    public static readonly SPECIES_STAT_CEILING_MULTIPLIER = 3.0;
+
     /**
      * Breeds two parent pets and places an egg into an incubator nest.
      */
@@ -89,16 +91,20 @@ export class AncientRunicPetCompanionBreedingEngine {
         }
 
         const speciesData = SPECIES_CATALOG[parent1.speciesType];
-        const variance = Number.isFinite(mutationVariance) ? Math.max(0, Math.min(0.25, mutationVariance)) : 0.05;
-        const qualityMultiplier = 1 + ((nestData.geneticQualityBonusPercent / 100) + variance);
+        const variance = Number.isFinite(mutationVariance) ? Math.max(-0.20, Math.min(0.25, mutationVariance)) : 0.05;
+        const qualityMultiplier = Math.max(0.5, 1 + ((nestData.geneticQualityBonusPercent / 100) + variance));
 
         const avgAtk = (parent1.attackPower + parent2.attackPower) / 2;
         const avgSpd = (parent1.movementSpeed + parent2.movementSpeed) / 2;
         const avgDef = (parent1.armorDefense + parent2.armorDefense) / 2;
 
-        const inhAtk = Math.round(avgAtk * qualityMultiplier);
-        const inhSpd = Math.round(avgSpd * qualityMultiplier);
-        const inhDef = Math.round(avgDef * qualityMultiplier);
+        const maxAtk = Math.round(speciesData.baseAttackPower * this.SPECIES_STAT_CEILING_MULTIPLIER);
+        const maxSpd = Math.round(speciesData.baseMovementSpeed * this.SPECIES_STAT_CEILING_MULTIPLIER);
+        const maxDef = Math.round(speciesData.baseArmorDefense * this.SPECIES_STAT_CEILING_MULTIPLIER);
+
+        const inhAtk = Math.min(maxAtk, Math.max(5, Math.round(avgAtk * qualityMultiplier)));
+        const inhSpd = Math.min(maxSpd, Math.max(5, Math.round(avgSpd * qualityMultiplier)));
+        const inhDef = Math.min(maxDef, Math.max(5, Math.round(avgDef * qualityMultiplier)));
 
         const nextGen = Math.max(parent1.generation, parent2.generation) + 1;
         const durationSec = Math.max(10, Math.round(speciesData.baseIncubationDurationSeconds / nestData.incubationSpeedMultiplier));

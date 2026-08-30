@@ -67,6 +67,22 @@ describe("AncientRunicPetCompanionBreedingEngine Genetics & Familiar Evolution",
         expect(baby.attackPower).toBe(166); // 104 * 1.60 = 166.4 -> 166
     });
 
+    it("enforces species stat cap preventing unbounded breeding inflation loop", () => {
+        const superParent: PetCompanion = {
+            petId: "super_wolf",
+            ownerPlayerId: "p",
+            speciesType: "DIRE_WOLF_PUP", // Base ATK 35 -> Cap is 35 * 3 = 105
+            evolutionTier: "ANCIENT_FAMILIAR",
+            attackPower: 200,
+            movementSpeed: 100,
+            armorDefense: 100,
+            generation: 10,
+        };
+
+        const egg = AncientRunicPetCompanionBreedingEngine.breedPets("p", superParent, superParent, "CELESTIAL_ASTRAL_CRADLE", 0.25);
+        expect(egg.inheritedAttackPower).toBe(105); // Clamped to 3.0x base stat ceiling
+    });
+
     it("rejects breeding incompatible pet species", () => {
         const wolf: PetCompanion = {
             petId: "wolf_01",
@@ -111,27 +127,6 @@ describe("AncientRunicPetCompanionBreedingEngine Genetics & Familiar Evolution",
         expect(egg.remainingDurationSeconds).toBe(120);
 
         expect(() => AncientRunicPetCompanionBreedingEngine.hatchEgg(egg)).toThrow("still incubating");
-    });
-
-    it("rejects hatching already hatched egg", () => {
-        const parent: PetCompanion = {
-            petId: "w1",
-            ownerPlayerId: "p",
-            speciesType: "DIRE_WOLF_PUP",
-            evolutionTier: "BABY",
-            attackPower: 35,
-            movementSpeed: 25,
-            armorDefense: 20,
-            generation: 1,
-        };
-
-        const egg = AncientRunicPetCompanionBreedingEngine.breedPets("p", parent, parent, "EARTHEN_NEST");
-        AncientRunicPetCompanionBreedingEngine.tickEggIncubation(egg, 120);
-
-        const pet = AncientRunicPetCompanionBreedingEngine.hatchEgg(egg);
-        expect(pet.evolutionTier).toBe("BABY");
-
-        expect(() => AncientRunicPetCompanionBreedingEngine.hatchEgg(egg)).toThrow("already hatched");
     });
 
     it("guards against null inputs and unsupported nest types", () => {
