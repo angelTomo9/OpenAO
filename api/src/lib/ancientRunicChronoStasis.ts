@@ -136,8 +136,9 @@ export class AncientRunicChronoStasisEngine {
         }
 
         const sec = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 1;
+        const billableSec = Math.min(sec, field.remainingLifespanSeconds);
         const deviceData = CHRONO_DEVICE_CATALOG[field.deviceType];
-        const manaCost = sec * deviceData.upkeepManaPerSecond;
+        const manaCost = billableSec * deviceData.upkeepManaPerSecond;
 
         if (Number.isFinite(availableCasterMana) && availableCasterMana < manaCost) {
             field.isActive = false;
