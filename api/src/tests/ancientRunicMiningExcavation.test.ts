@@ -29,10 +29,14 @@ describe("AncientRunicMiningExcavationEngine Mining & Geodes", () => {
         expect(vein.remainingOreCapacity).toBe(20);
     });
 
-    it("cracks geode to extract legendary Void Amethyst", () => {
-        const geodeRes = AncientRunicMiningExcavationEngine.crackGeode(0.95);
-        expect(geodeRes.gemstone).toBe("VOID_AMETHYST");
-        expect(geodeRes.goldValue).toBe(300);
+    it("cracks geode to extract gemstones across loot table", () => {
+        const voidAmethyst = AncientRunicMiningExcavationEngine.crackGeode(0.95);
+        expect(voidAmethyst.gemstone).toBe("VOID_AMETHYST");
+        expect(voidAmethyst.goldValue).toBe(300);
+
+        const ruby = AncientRunicMiningExcavationEngine.crackGeode(0.10);
+        expect(ruby.gemstone).toBe("RUNIC_RUBY");
+        expect(ruby.goldValue).toBe(50);
     });
 
     it("rejects excavation when pickaxe hardness is lower than vein hardness level", () => {
@@ -52,7 +56,7 @@ describe("AncientRunicMiningExcavationEngine Mining & Geodes", () => {
         expect(pickaxe.currentDurability).toBe(120); // No durability consumed
     });
 
-    it("sharpens pickaxe with whetstone and restores durability", () => {
+    it("sharpens pickaxe with whetstone and refuses to revive broken pickaxe", () => {
         const pick = AncientRunicMiningExcavationEngine.forgePickaxe("miner_03", "ADAMANTITE_MINING_PICK", 100000);
         pick.currentDurability = 50;
 
@@ -60,9 +64,13 @@ describe("AncientRunicMiningExcavationEngine Mining & Geodes", () => {
         expect(sharp.success).toBe(true);
         expect(sharp.newDurability).toBe(100);
 
-        // Clamp to max
-        AncientRunicMiningExcavationEngine.sharpenPickaxe(pick, 100);
-        expect(pick.currentDurability).toBe(120);
+        // Break pickaxe
+        pick.currentDurability = 0;
+        pick.isBroken = true;
+
+        const brokenSharp = AncientRunicMiningExcavationEngine.sharpenPickaxe(pick, 50);
+        expect(brokenSharp.success).toBe(false);
+        expect(brokenSharp.isBroken).toBe(true);
     });
 
     it("guards against depleted veins and unsupported pickaxe models", () => {

@@ -95,7 +95,7 @@ export class AncientRunicMiningExcavationEngine {
     public static excavateVein(
         pickaxe: ActiveMiningPickaxe,
         vein: OreVeinDeposit,
-        rng: () => number = () => 0
+        rng: () => number = Math.random
     ): { success: boolean; oreExtracted: number; oreName?: string; discoveredGeode: boolean; remainingDurability: number; reason?: string } {
         if (!pickaxe || pickaxe.isBroken || pickaxe.currentDurability < this.DURABILITY_LOSS_PER_EXCAVATION) {
             return { success: false, oreExtracted: 0, discoveredGeode: false, remainingDurability: pickaxe?.currentDurability ?? 0, reason: "Pickaxe is broken or lacks durability." };
@@ -148,9 +148,9 @@ export class AncientRunicMiningExcavationEngine {
      * Cracks open a discovered geode to reveal gemstones.
      */
     public static crackGeode(
-        gemRoll = 0.95
+        gemRoll = Math.random()
     ): { gemstone: GemstoneType; goldValue: number } {
-        const roll = Number.isFinite(gemRoll) ? Math.max(0, Math.min(1, gemRoll)) : 0.5;
+        const roll = Number.isFinite(gemRoll) ? Math.max(0, Math.min(1, gemRoll)) : Math.random();
 
         let gem: GemstoneType = "RUNIC_RUBY";
         if (roll >= 0.90) {
@@ -168,22 +168,21 @@ export class AncientRunicMiningExcavationEngine {
     }
 
     /**
-     * Sharpens and repairs pickaxe durability using a whetstone.
+     * Sharpens and repairs pickaxe durability using a whetstone (cannot revive completely broken pickaxes).
      */
     public static sharpenPickaxe(
         pickaxe: ActiveMiningPickaxe,
         repairAmount = 60
     ): { success: boolean; newDurability: number; isBroken: boolean } {
-        if (!pickaxe) return { success: false, newDurability: 0, isBroken: true };
+        if (!pickaxe || pickaxe.isBroken) return { success: false, newDurability: pickaxe?.currentDurability ?? 0, isBroken: true };
 
         const amt = Number.isFinite(repairAmount) ? Math.max(0, repairAmount) : 60;
         pickaxe.currentDurability = Math.min(pickaxe.maxDurability, pickaxe.currentDurability + amt);
-        pickaxe.isBroken = pickaxe.currentDurability <= 0;
 
         return {
             success: true,
             newDurability: pickaxe.currentDurability,
-            isBroken: pickaxe.isBroken,
+            isBroken: false,
         };
     }
 }
