@@ -111,6 +111,11 @@ export class AncientRunicMasonryStonecarvingEngine {
             };
         }
 
+        const chiselData = CHISEL_CATALOG[chisel.chiselType];
+        if (!chiselData) {
+            return { success: false, remainingDurability: chisel.currentDurability, reason: `Unknown chisel type: ${String(chisel.chiselType)}` };
+        }
+
         const recipe = MONUMENT_CATALOG[recipeType];
         if (!recipe) {
             return { success: false, remainingDurability: chisel.currentDurability, reason: `Unknown monument recipe: ${String(recipeType)}` };
@@ -132,12 +137,11 @@ export class AncientRunicMasonryStonecarvingEngine {
 
         // Deduct durability
         chisel.currentDurability -= this.DURABILITY_COST_PER_CARVE;
-        if (chisel.currentDurability <= 0) {
+        if (chisel.currentDurability < this.DURABILITY_COST_PER_CARVE) {
             chisel.currentDurability = Math.max(0, chisel.currentDurability);
             chisel.isFunctional = false;
         }
 
-        const chiselData = CHISEL_CATALOG[chisel.chiselType];
         const safeRoll = Number.isFinite(carveRoll) ? Math.max(0, Math.min(1, carveRoll)) : Math.random();
         const rollPercent = safeRoll * 100;
 
@@ -152,8 +156,10 @@ export class AncientRunicMasonryStonecarvingEngine {
         // Calculate independent precision score (0% to 100%)
         const safePrecisionRoll = Number.isFinite(precisionRoll) ? Math.max(0, Math.min(1, precisionRoll)) : Math.random();
         const powerRatio = Math.min(1.0, chisel.chiselPower / 120);
+        // precisionBonus scaled so max tier (35) contributes exactly 20 points: (bonus / 35) * 20
+        const bonusPoints = (chiselData.precisionBonusPercent / 35) * 20;
         const precisionScore = Math.max(0, Math.min(100, Math.round(
-            (safePrecisionRoll * 40) + (powerRatio * 40) + (chiselData.precisionBonusPercent * 0.57)
+            (safePrecisionRoll * 40) + (powerRatio * 40) + bonusPoints
         )));
         const precisionMultiplier = 0.8 + ((precisionScore / 100) * 0.4); // 0.8 to 1.2x
 
@@ -202,7 +208,7 @@ export class AncientRunicMasonryStonecarvingEngine {
 
         const amt = Number.isFinite(repairAmount) ? Math.max(0, repairAmount) : 50;
         chisel.currentDurability = Math.min(chisel.maxDurability, chisel.currentDurability + amt);
-        chisel.isFunctional = chisel.currentDurability > 0;
+        chisel.isFunctional = chisel.currentDurability >= this.DURABILITY_COST_PER_CARVE;
 
         return {
             success: true,

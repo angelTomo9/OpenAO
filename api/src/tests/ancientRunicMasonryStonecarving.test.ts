@@ -65,15 +65,22 @@ describe("AncientRunicMasonryStonecarvingEngine Stonecarving & Monuments", () =>
         expect(chisel.currentDurability).toBe(65); // 75 - 10
     });
 
-    it("sharpens chisel and restores functionality", () => {
+    it("gates isFunctional in sharpenChisel based on DURABILITY_COST_PER_CARVE threshold", () => {
         const chisel = AncientRunicMasonryStonecarvingEngine.forgeChisel("mason_04", "HARDENED_BRONZE_CHISEL", 100000);
         chisel.currentDurability = 0;
         chisel.isFunctional = false;
 
-        const rep = AncientRunicMasonryStonecarvingEngine.sharpenChisel(chisel, 50);
-        expect(rep.success).toBe(true);
-        expect(rep.newDurability).toBe(50);
-        expect(rep.isFunctional).toBe(true);
+        // Sharpen only 5 (below 10 required) -> isFunctional remains false
+        const repLow = AncientRunicMasonryStonecarvingEngine.sharpenChisel(chisel, 5);
+        expect(repLow.success).toBe(true);
+        expect(repLow.newDurability).toBe(5);
+        expect(repLow.isFunctional).toBe(false);
+
+        // Sharpen 10 more -> 15 (>= 10) -> isFunctional becomes true
+        const repHigh = AncientRunicMasonryStonecarvingEngine.sharpenChisel(chisel, 10);
+        expect(repHigh.success).toBe(true);
+        expect(repHigh.newDurability).toBe(15);
+        expect(repHigh.isFunctional).toBe(true);
     });
 
     it("guards against null inputs and unsupported chisel models", () => {
@@ -81,6 +88,17 @@ describe("AncientRunicMasonryStonecarvingEngine Stonecarving & Monuments", () =>
             "Unsupported masonry chisel type"
         );
 
+        const invalidChisel: ActiveMasonryChisel = {
+            chiselId: "bad",
+            masonPlayerId: "p",
+            chiselType: "LASER" as any,
+            currentDurability: 50,
+            maxDurability: 50,
+            chiselPower: 10,
+            isFunctional: true,
+        };
+
+        expect(AncientRunicMasonryStonecarvingEngine.carveMonument(invalidChisel, "RUNIC_OBELISK_OF_POWER", ["GRANITE_SLAB", "GRANITE_SLAB"]).success).toBe(false);
         expect(AncientRunicMasonryStonecarvingEngine.carveMonument(null as any, "RUNIC_OBELISK_OF_POWER", []).success).toBe(false);
         expect(AncientRunicMasonryStonecarvingEngine.sharpenChisel(null as any).success).toBe(false);
     });
