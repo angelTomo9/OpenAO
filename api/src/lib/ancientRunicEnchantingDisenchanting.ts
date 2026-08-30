@@ -5,7 +5,8 @@ import crypto from "node:crypto";
  * Simulates enchanting altars (Novice Arcane Table, Astral Crystal Altar, Void Nexus Conduit),
  * arcane dusts & reagents (Mystic Dust, Astral Shard, Void Core Fragment),
  * enchantment formulas (Fiery Blade Strike, Prismatic Aegis Ward, Celestial Surge Imbuing),
- * independent imbuing quality ratings (0% to 100%), item disenchanting salvage, reagent consumption, and altar attunement.
+ * independent imbuing quality ratings scaling with altar enchanting power (0% to 100%),
+ * item disenchanting salvage, reagent consumption, and altar attunement.
  */
 
 export type EnchantingAltarType = "NOVICE_ARCANE_TABLE" | "ASTRAL_CRYSTAL_ALTAR" | "VOID_NEXUS_CONDUIT";
@@ -100,7 +101,7 @@ export class AncientRunicEnchantingDisenchantingEngine {
     }
 
     /**
-     * Enchants equipment with arcane formula, consuming reagents and scaling potency.
+     * Enchants equipment with arcane formula, consuming reagents and scaling potency with altar power.
      */
     public static enchantItem(
         altar: ActiveEnchantingAltar,
@@ -154,9 +155,12 @@ export class AncientRunicEnchantingDisenchantingEngine {
             };
         }
 
-        // Calculate independent imbuing quality score (0% to 100%)
+        // Calculate independent imbuing quality score factoring enchantingPower (0% to 100%)
         const safeQualityRoll = Number.isFinite(qualityRoll) ? Math.max(0, Math.min(1, qualityRoll)) : Math.random();
-        const qualityScore = Math.max(0, Math.min(100, Math.round(50 + (safeQualityRoll * 30) + altarData.potencyBonusPercent)));
+        const powerRatio = Math.min(1.0, altar.enchantingPower / 120); // 0.208 (novice) to 1.0 (void)
+        const qualityScore = Math.max(0, Math.min(100, Math.round(
+            (safeQualityRoll * 40) + (powerRatio * 40) + (altarData.potencyBonusPercent * 0.57)
+        )));
         const qualityMultiplier = 0.8 + ((qualityScore / 100) * 0.4); // 0.8 to 1.2x
 
         const finalValue = Math.round(formula.baseStatValue * qualityMultiplier);
@@ -254,7 +258,7 @@ export class AncientRunicEnchantingDisenchantingEngine {
     ): { success: boolean; newDurability: number; isAttuned: boolean } {
         if (!altar) return { success: false, newDurability: 0, isAttuned: false };
 
-        const amt = Number.isFinite(rechargeAmount) ? Math.max(0, rechargeAmount) : 60;
+        const amt = Number.isFinite(rechargeAmount) ? Math.max(0, repairOrRecharge(rechargeAmount)) : 60;
         altar.currentDurability = Math.min(altar.maxDurability, altar.currentDurability + amt);
         altar.isAttuned = altar.currentDurability > 0;
 
@@ -268,4 +272,8 @@ export class AncientRunicEnchantingDisenchantingEngine {
 
 function recipeSafe(formula: string): string {
     return formula.toLowerCase();
+}
+
+function repairOrRecharge(val: number): number {
+    return Math.max(0, val);
 }
