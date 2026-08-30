@@ -16,6 +16,7 @@ describe("AncientRunicFishingDeepAbyssHarvestingEngine Harpoon & Leviathan Fishi
             "ABYSSAL_TRENCH",
             "LEVIATHAN_PHEROMONE_CHUM",
             0.5,
+            0.1, // Catch roll
             100000
         );
 
@@ -28,28 +29,40 @@ describe("AncientRunicFishingDeepAbyssHarvestingEngine Harpoon & Leviathan Fishi
         expect(catchRes.remainingDurability).toBe(240); // 250 - 10
     });
 
-    it("snaps line when fish weight exceeds gear line strength", () => {
+    it("snaps line without consuming durability when fish weight exceeds line strength", () => {
         const rod = AncientRunicFishingDeepAbyssHarvestingEngine.forgeFishingGear("fisher_02", "BAMBOO_RIVER_ROD", 100000); // 30kg line strength
 
-        // Sunken Glade yields Golden Astral Trout (40kg > 30kg) -> snaps line
+        // Sunken Glade yields Golden Astral Trout (40kg > 30kg) -> snaps line without eating durability
         const snapRes = AncientRunicFishingDeepAbyssHarvestingEngine.castAndReel(rod, "SUNKEN_GLADE");
         expect(snapRes.success).toBe(false);
         expect(snapRes.isLineSnapped).toBe(true);
+        expect(snapRes.remainingDurability).toBe(60); // Not consumed
         expect(snapRes.reason).toContain("Line snapped");
     });
 
+    it("returns fish got away when catch roll fails without snapping line", () => {
+        const harpoon = AncientRunicFishingDeepAbyssHarvestingEngine.forgeFishingGear("fisher_03", "MITHRIL_REINFORCED_HARPOON", 100000); // 88% catch rate
+
+        // Catch roll 0.95 (95 > 88%)
+        const missRes = AncientRunicFishingDeepAbyssHarvestingEngine.castAndReel(harpoon, "LAVA_SPRINGS", undefined, 0.5, 0.95);
+        expect(missRes.success).toBe(false);
+        expect(missRes.isLineSnapped).toBe(false);
+        expect(missRes.reason).toContain("Fish got away");
+        expect(missRes.remainingDurability).toBe(130); // 140 - 10 consumed for cast
+    });
+
     it("snaps line when reel tension roll exceeds critical limit (tension > 95%)", () => {
-        const harpoon = AncientRunicFishingDeepAbyssHarvestingEngine.forgeFishingGear("fisher_03", "MITHRIL_REINFORCED_HARPOON", 100000);
+        const harpoon = AncientRunicFishingDeepAbyssHarvestingEngine.forgeFishingGear("fisher_04", "MITHRIL_REINFORCED_HARPOON", 100000);
 
         // Obsidian Salamander (15kg <= 80kg), tension roll 0.99 with no lure (99% tension > 95%)
-        const tensionSnap = AncientRunicFishingDeepAbyssHarvestingEngine.castAndReel(harpoon, "LAVA_SPRINGS", undefined, 0.99);
+        const tensionSnap = AncientRunicFishingDeepAbyssHarvestingEngine.castAndReel(harpoon, "LAVA_SPRINGS", undefined, 0.99, 0.1);
         expect(tensionSnap.success).toBe(false);
         expect(tensionSnap.isLineSnapped).toBe(true);
         expect(tensionSnap.reason).toContain("excessive reeling tension");
     });
 
     it("repairs gear durability and rejects repairing broken gear", () => {
-        const rod = AncientRunicFishingDeepAbyssHarvestingEngine.forgeFishingGear("fisher_04", "BAMBOO_RIVER_ROD", 100000);
+        const rod = AncientRunicFishingDeepAbyssHarvestingEngine.forgeFishingGear("fisher_05", "BAMBOO_RIVER_ROD", 100000);
         rod.currentDurability = 30;
 
         const rep = AncientRunicFishingDeepAbyssHarvestingEngine.repairGear(rod, 20);

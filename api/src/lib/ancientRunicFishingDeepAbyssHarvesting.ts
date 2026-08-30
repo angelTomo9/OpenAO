@@ -4,7 +4,7 @@ import crypto from "node:crypto";
  * Ancient Runic Fishing Deep Abyss Harvesting, Harpoon Mastery & Leviathan Lure Engine for OpenAO MMORPG.
  * Simulates fishing rods & harpoons (Bamboo Rod, Mithril Harpoon, Abyssal Trident),
  * fishing biomes (Lava Springs, Sunken Glade, Abyssal Trench), bait lures (Glowing Grubs, Chrono Minnow, Leviathan Chum),
- * line tension mechanics (0% to 100%), snap risk, fillet yields, and tool wear.
+ * probabilistic bite/catch rate rolls, line tension mechanics (0% to 100%), snap risk, fillet yields, and tool wear.
  */
 
 export type FishingGearType = "BAMBOO_RIVER_ROD" | "MITHRIL_REINFORCED_HARPOON" | "ABYSSAL_KRAKEN_TRIDENT";
@@ -107,17 +107,11 @@ export class AncientRunicFishingDeepAbyssHarvestingEngine {
         targetBiome: FishingBiomeType,
         lureType?: BaitLureType,
         reelTensionRoll = Math.random(),
+        catchChanceRoll = Math.random(),
         currentEpochMs = Date.now()
     ): { success: boolean; catchResult?: HarvestedFishCatch; isLineSnapped: boolean; remainingDurability: number; reason?: string } {
         if (!gear || gear.isBroken || gear.currentDurability < this.DURABILITY_COST_PER_CAST) {
             return { success: false, isLineSnapped: false, remainingDurability: gear?.currentDurability ?? 0, reason: "Fishing gear is broken or lacks durability." };
-        }
-
-        // Deduct durability
-        gear.currentDurability -= this.DURABILITY_COST_PER_CAST;
-        if (gear.currentDurability <= 0) {
-            gear.currentDurability = Math.max(0, gear.currentDurability);
-            gear.isBroken = true;
         }
 
         // Identify fish species for biome
@@ -128,14 +122,25 @@ export class AncientRunicFishingDeepAbyssHarvestingEngine {
         const gearData = GEAR_CATALOG[gear.gearType];
         const lureData = lureType ? LURE_CATALOG[lureType] : undefined;
 
-        // Evaluate line strength vs fish weight
-        if (targetFish.baseWeightKg > gearData.lineStrengthKg) {
+        // Calculate variance-adjusted weight first
+        const weightMultiplier = 0.8 + (Math.max(0, Math.min(1, reelTensionRoll)) * 0.4);
+        const actualWeight = Math.round(targetFish.baseWeightKg * weightMultiplier);
+
+        // Evaluate line strength vs actual fish weight before consuming durability
+        if (actualWeight > gearData.lineStrengthKg) {
             return {
                 success: false,
                 isLineSnapped: true,
                 remainingDurability: gear.currentDurability,
-                reason: `Line snapped! Fish weight (${targetFish.baseWeightKg}kg) exceeds line test strength (${gearData.lineStrengthKg}kg).`,
+                reason: `Line snapped! Actual fish weight (${actualWeight}kg) exceeds line test strength (${gearData.lineStrengthKg}kg).`,
             };
+        }
+
+        // Deduct durability for active cast
+        gear.currentDurability -= this.DURABILITY_COST_PER_CAST;
+        if (gear.currentDurability <= 0) {
+            gear.currentDurability = Math.max(0, gear.currentDurability);
+            gear.isBroken = true;
         }
 
         // Evaluate tension mechanics
@@ -151,9 +156,18 @@ export class AncientRunicFishingDeepAbyssHarvestingEngine {
             };
         }
 
-        // Calculate fillet and gold value with weight variance
-        const weightMultiplier = 0.8 + (reelTensionRoll * 0.4);
-        const actualWeight = Math.round(targetFish.baseWeightKg * weightMultiplier);
+        // Evaluate catch rate and bite chance bonus
+        const totalCatchRatePercent = Math.min(100, gearData.baseCatchRatePercent + (lureData?.biteChanceBonusPercent ?? 0));
+        const rollPercent = catchChanceRoll * 100;
+        if (rollPercent > totalCatchRatePercent) {
+            return {
+                success: false,
+                isLineSnapped: false,
+                remainingDurability: gear.currentDurability,
+                reason: `Fish got away: rolled ${rollPercent.toFixed(1)}, needed <= ${totalCatchRatePercent}%.`,
+            };
+        }
+
         const filletYield = Math.max(1, Math.round(targetFish.baseFilletYield * weightMultiplier));
         const goldVal = Math.round(targetFish.baseGoldValue * weightMultiplier);
 
