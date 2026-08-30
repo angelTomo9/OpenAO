@@ -5,7 +5,7 @@ import {
 } from "../lib/ancientRunicInscribingSpellbookTome.js";
 
 describe("AncientRunicInscribingSpellbookTomeEngine Spellbook Synthesis & Inscribing", () => {
-    it("inscribes Codex of Dimensional Rupture with Void Dragon Quill achieving 100% calligraphy quality", () => {
+    it("inscribes Codex of Dimensional Rupture with Void Dragon Quill achieving 100% calligraphy quality and tracks consumed parchments", () => {
         const quill = AncientRunicInscribingSpellbookTomeEngine.forgeAstralQuill("scribe_01", "VOID_DRAGON_QUILL", 100000);
         expect(quill.quillType).toBe("VOID_DRAGON_QUILL");
         expect(quill.currentInkDurability).toBe(300);
@@ -23,13 +23,31 @@ describe("AncientRunicInscribingSpellbookTomeEngine Spellbook Synthesis & Inscri
         expect(inscribeRes.inscribedTome?.calligraphyQualityPercent).toBe(100); // 50 + 15 + 35 = 100
         expect(inscribeRes.inscribedTome?.finalSpellPower).toBe(132); // 110 * 1.20 = 132
         expect(inscribeRes.inscribedTome?.finalManaCostReductionPercent).toBe(42); // 35 * 1.20 = 42%
+        expect(inscribeRes.inscribedTome?.consumedParchmentCount).toBe(2);
+        expect(inscribeRes.inscribedTome?.consumedParchmentType).toBe("VOID_ASTRAL_PARCHMENT");
         expect(inscribeRes.remainingInkDurability).toBe(288); // 300 - 12
+    });
+
+    it("scales intermediate calligraphy quality and stats when using lower tier quill and roll", () => {
+        const ravenQuill = AncientRunicInscribingSpellbookTomeEngine.forgeAstralQuill("scribe_mid", "RAVEN_FEATHER_QUILL", 100000); // +10% bonus
+
+        // Roll 0.0 -> Quality = 50 + 0 + 10 = 60%. Multiplier = 0.8 + 0.24 = 1.04x
+        const midRes = AncientRunicInscribingSpellbookTomeEngine.inscribeTome(
+            ravenQuill,
+            "TOME_OF_ARCANE_MISSILES",
+            ["PAPYRUS_OF_SWIFTNESS", "PAPYRUS_OF_SWIFTNESS"],
+            0.0
+        );
+
+        expect(midRes.success).toBe(true);
+        expect(midRes.inscribedTome?.calligraphyQualityPercent).toBe(60);
+        expect(midRes.inscribedTome?.finalSpellPower).toBe(36); // 35 * 1.04 = 36.4 -> 36
+        expect(midRes.inscribedTome?.finalManaCostReductionPercent).toBe(10); // 10 * 1.04 = 10.4 -> 10
     });
 
     it("rejects inscribing when insufficient parchments are provided", () => {
         const quill = AncientRunicInscribingSpellbookTomeEngine.forgeAstralQuill("scribe_02", "RAVEN_FEATHER_QUILL", 100000);
 
-        // Grimoire requires 2x VELLUM_OF_PYROMANCY. Only provided 1
         const failRes = AncientRunicInscribingSpellbookTomeEngine.inscribeTome(
             quill,
             "GRIMOIRE_OF_CATACLYSMIC_INFERNO",
@@ -38,13 +56,12 @@ describe("AncientRunicInscribingSpellbookTomeEngine Spellbook Synthesis & Inscri
 
         expect(failRes.success).toBe(false);
         expect(failRes.reason).toContain("Insufficient parchments");
-        expect(quill.currentInkDurability).toBe(100); // Not consumed
+        expect(quill.currentInkDurability).toBe(100);
     });
 
     it("handles botch roll consuming ink durability", () => {
-        const quill = AncientRunicInscribingSpellbookTomeEngine.forgeAstralQuill("scribe_03", "RAVEN_FEATHER_QUILL", 100000); // 85% success
+        const quill = AncientRunicInscribingSpellbookTomeEngine.forgeAstralQuill("scribe_03", "RAVEN_FEATHER_QUILL", 100000);
 
-        // Roll 0.95 (95 > 85%) -> Botched
         const botch = AncientRunicInscribingSpellbookTomeEngine.inscribeTome(
             quill,
             "TOME_OF_ARCANE_MISSILES",
@@ -54,7 +71,7 @@ describe("AncientRunicInscribingSpellbookTomeEngine Spellbook Synthesis & Inscri
 
         expect(botch.success).toBe(false);
         expect(botch.reason).toContain("botched");
-        expect(quill.currentInkDurability).toBe(88); // 100 - 12
+        expect(quill.currentInkDurability).toBe(88);
     });
 
     it("refills ink well and restores writing capability", () => {

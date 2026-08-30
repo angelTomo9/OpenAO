@@ -5,7 +5,7 @@ import crypto from "node:crypto";
  * Simulates astral quills (Raven Quill, Phoenix Ember Quill, Void Dragon Quill),
  * arcane parchment materials (Papyrus of Swiftness, Vellum of Pyromancy, Void Astral Parchment),
  * spellbook tomes (Arcane Missiles, Cataclysmic Inferno, Dimensional Rupture),
- * masterwork calligraphy quality scores (0% to 100%), mana cost reduction scaling, and ink refills.
+ * masterwork calligraphy quality scores (0% to 100%), mana cost reduction scaling, material consumption tracking, and ink refills.
  */
 
 export type AstralQuillType = "RAVEN_FEATHER_QUILL" | "PHOENIX_EMBER_QUILL" | "VOID_DRAGON_QUILL";
@@ -44,6 +44,8 @@ export interface InscribedSpellbookTome {
     finalSpellPower: number;
     finalManaCostReductionPercent: number;
     calligraphyQualityPercent: number; // 0 to 100
+    consumedParchmentCount: number;
+    consumedParchmentType: ArcaneParchmentType;
     inscribedEpochMs: number;
 }
 
@@ -89,7 +91,7 @@ export class AncientRunicInscribingSpellbookTomeEngine {
     }
 
     /**
-     * Inscribes a spellbook tome from arcane parchments.
+     * Inscribes a spellbook tome from arcane parchments with material consumption reporting.
      */
     public static inscribeTome(
         quill: ActiveAstralQuill,
@@ -149,7 +151,7 @@ export class AncientRunicInscribingSpellbookTomeEngine {
         const qualityMultiplier = 0.8 + ((qualityScore / 100) * 0.4); // 0.8 to 1.2x
 
         const finalSpellPower = Math.round(recipe.baseSpellPower * qualityMultiplier);
-        const finalManaReduction = Math.min(60, Math.round(recipe.baseManaCostReductionPercent * qualityMultiplier));
+        const finalManaReduction = Math.round(recipe.baseManaCostReductionPercent * qualityMultiplier);
 
         const uuid = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${currentEpochMs}_${Math.random()}`;
 
@@ -159,6 +161,8 @@ export class AncientRunicInscribingSpellbookTomeEngine {
             finalSpellPower,
             finalManaCostReductionPercent: finalManaReduction,
             calligraphyQualityPercent: qualityScore,
+            consumedParchmentCount: recipe.requiredParchmentCount,
+            consumedParchmentType: recipe.requiredParchmentType,
             inscribedEpochMs: currentEpochMs,
         };
 
