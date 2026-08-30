@@ -4,7 +4,7 @@ import crypto from "node:crypto";
  * Ancient Runic Runesmith Enchanting Table, Glyphic Imbuing & Prefix/Suffix Affix Synthesis Engine for OpenAO MMORPG.
  * Simulates enchanting tables (Obsidian Runesmith Anvil, Celestial Inscription Table, Void Genesis Altar),
  * primal runestone imbuing (Rune of Berserking, Rune of Warding, Rune of Haste), prefix and suffix affix assignment,
- * item rarity tier scaling (Common to Legendary), and catalyst durability consumption.
+ * success rate probability rolls (85% to 99%), item rarity tier scaling (Common to Legendary), and catalyst durability consumption.
  */
 
 export type EnchantingTableType = "OBSIDIAN_RUNESMITH_ANVIL" | "CELESTIAL_INSCRIPTION_TABLE" | "VOID_GENESIS_ALTAR";
@@ -94,12 +94,13 @@ export class AncientRunicRunesmithEnchantingTableEngine {
     }
 
     /**
-     * Imbues a primal runestone into target equipment.
+     * Imbues a primal runestone into target equipment, rolling against the table success rate.
      */
     public static imbueRune(
         table: ActiveEnchantingTable,
         equipment: EnchantableEquipment,
-        runeType: PrimalRuneType
+        runeType: PrimalRuneType,
+        rng: () => number = () => 0
     ): { success: boolean; appliedAffix?: string; finalBonusValue?: number; remainingCatalyst: number; reason?: string } {
         if (!table || !table.isFunctional || table.currentCatalystDurability < this.CATALYST_COST_PER_ENCHANT) {
             return {
@@ -130,6 +131,17 @@ export class AncientRunicRunesmithEnchantingTableEngine {
         table.currentCatalystDurability -= this.CATALYST_COST_PER_ENCHANT;
         if (table.currentCatalystDurability === 0) {
             table.isFunctional = false;
+        }
+
+        // Success rate roll
+        const tableData = TABLE_CATALOG[table.tableType];
+        const roll = rng() * 100;
+        if (roll > tableData.baseSuccessRatePercent) {
+            return {
+                success: false,
+                remainingCatalyst: table.currentCatalystDurability,
+                reason: `Imbuing failed: rolled ${roll.toFixed(1)}, needed <= ${tableData.baseSuccessRatePercent}. Catalyst consumed.`,
+            };
         }
 
         // Calculate scaled bonus
