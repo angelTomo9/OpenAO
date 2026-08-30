@@ -5,7 +5,7 @@ import crypto from "node:crypto";
  * Simulates mining tools (Copper Pickaxe, Runic Mithril Pickaxe, Celestial Void Drill),
  * subterranean ore veins (Vein of Pyrite, Astral Mithril Seam, Abyssal Darkstone Monolith),
  * hardness requirements vs mining power, critical vein strike rolls (2.0x yield), raw gem prospecting,
- * ore smelting into bars, and pickaxe sharpening.
+ * ore smelting into bars with per-ore ratios, and pickaxe sharpening.
  */
 
 export type MiningToolType = "COPPER_PICKAXE" | "RUNIC_MITHRIL_PICKAXE" | "CELESTIAL_VOID_DRILL";
@@ -26,6 +26,7 @@ export interface SubterraneanVeinData {
     baseOreYield: number;
     oreMaterialName: string;
     associatedGem: RareGemType;
+    requiredOresPerBar: number;
 }
 
 export interface ActiveMiningTool {
@@ -64,9 +65,9 @@ export const TOOL_CATALOG: Record<MiningToolType, MiningToolData> = {
 };
 
 export const VEIN_CATALOG: Record<SubterraneanVeinType, SubterraneanVeinData> = {
-    VEIN_OF_PYRITE: { veinType: "VEIN_OF_PYRITE", geologicalHardness: 20, baseOreYield: 3, oreMaterialName: "PYRITE_ORE", associatedGem: "RAW_AMBER" },
-    ASTRAL_MITHRIL_SEAM: { veinType: "ASTRAL_MITHRIL_SEAM", geologicalHardness: 50, baseOreYield: 6, oreMaterialName: "ASTRAL_MITHRIL_ORE", associatedGem: "ASTRAL_SAPPHIRE" },
-    ABYSSAL_DARKSTONE_MONOLITH: { veinType: "ABYSSAL_DARKSTONE_MONOLITH", geologicalHardness: 90, baseOreYield: 12, oreMaterialName: "DARKSTONE_ORE", associatedGem: "VOID_DIAMOND" },
+    VEIN_OF_PYRITE: { veinType: "VEIN_OF_PYRITE", geologicalHardness: 20, baseOreYield: 3, oreMaterialName: "PYRITE_ORE", associatedGem: "RAW_AMBER", requiredOresPerBar: 2 },
+    ASTRAL_MITHRIL_SEAM: { veinType: "ASTRAL_MITHRIL_SEAM", geologicalHardness: 50, baseOreYield: 6, oreMaterialName: "ASTRAL_MITHRIL_ORE", associatedGem: "ASTRAL_SAPPHIRE", requiredOresPerBar: 3 },
+    ABYSSAL_DARKSTONE_MONOLITH: { veinType: "ABYSSAL_DARKSTONE_MONOLITH", geologicalHardness: 90, baseOreYield: 12, oreMaterialName: "DARKSTONE_ORE", associatedGem: "VOID_DIAMOND", requiredOresPerBar: 4 },
 };
 
 export class AncientRunicMiningExcavationEngine {
@@ -132,13 +133,13 @@ export class AncientRunicMiningExcavationEngine {
         strikeRoll = Math.random(),
         critRoll = Math.random(),
         currentEpochMs = Date.now()
-    ): { success: boolean; result?: ExcavationStrikeResult; reason?: string } {
+    ): { success: boolean; result?: ExcavationStrikeResult; remainingDurability?: number; reason?: string } {
         if (!tool || !tool.isFunctional || tool.currentDurability < this.DURABILITY_COST_PER_SWING) {
-            return { success: false, reason: "Mining tool is broken or lacks durability." };
+            return { success: false, remainingDurability: tool?.currentDurability ?? 0, reason: "Mining tool is broken or lacks durability." };
         }
 
         if (!vein || vein.isDepleted || vein.remainingOreCapacity <= 0) {
-            return { success: false, reason: "Ore vein is completely depleted." };
+            return { success: false, remainingDurability: tool.currentDurability, reason: "Ore vein is completely depleted." };
         }
 
         const toolData = TOOL_CATALOG[tool.toolType];
@@ -148,6 +149,7 @@ export class AncientRunicMiningExcavationEngine {
         if (veinData.geologicalHardness > tool.miningPower) {
             return {
                 success: false,
+                remainingDurability: tool.currentDurability,
                 reason: `Pickaxe deflected: geological hardness (${veinData.geologicalHardness}) exceeds tool mining power (${tool.miningPower}).`,
             };
         }
@@ -163,6 +165,7 @@ export class AncientRunicMiningExcavationEngine {
         if (rollPercent > toolData.baseSuccessRatePercent) {
             return {
                 success: false,
+                remainingDurability: tool.currentDurability,
                 reason: `Swing glanced off stone: rolled ${rollPercent.toFixed(1)}, needed <= ${toolData.baseSuccessRatePercent}.`,
             };
         }
@@ -197,31 +200,33 @@ export class AncientRunicMiningExcavationEngine {
         return {
             success: true,
             result: strikeRes,
+            remainingDurability: tool.currentDurability,
         };
     }
 
     /**
-     * Smelts mined raw ore into refined metal bars.
+     * Smelts mined raw ore into refined metal bars according to vein-specific ratios.
      */
     public static smeltOre(
         oreCount: number,
         oreType: SubterraneanVeinType
-    ): { success: boolean; refinedBarsProduced: number; reason?: string } {
+    ): { success: boolean; refinedBarsProduced: number; requiredPerBar: number; reason?: string } {
         if (!Number.isFinite(oreCount) || oreCount <= 0) {
-            return { success: false, refinedBarsProduced: 0, reason: "Invalid ore quantity." };
+            return { success: false, refinedBarsProduced: 0, requiredPerBar: 0, reason: "Invalid ore quantity." };
         }
 
         const veinData = VEIN_CATALOG[oreType];
         if (!veinData) {
-            return { success: false, refinedBarsProduced: 0, reason: `Unknown ore type: ${String(oreType)}` };
+            return { success: false, refinedBarsProduced: 0, requiredPerBar: 0, reason: `Unknown ore type: ${String(oreType)}` };
         }
 
-        // 2 raw ores smelt into 1 refined metal bar
-        const bars = Math.floor(oreCount / 2);
+        const ratio = veinData.requiredOresPerBar;
+        const bars = Math.floor(oreCount / ratio);
         return {
             success: bars > 0,
             refinedBarsProduced: bars,
-            reason: bars === 0 ? "Requires at least 2 raw ores to smelt 1 bar." : undefined,
+            requiredPerBar: ratio,
+            reason: bars === 0 ? `Requires at least ${ratio} raw ores to smelt 1 bar of ${veinData.oreMaterialName}.` : undefined,
         };
     }
 

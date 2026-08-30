@@ -28,13 +28,25 @@ describe("AncientRunicMiningExcavationEngine Subterranean Mining & Smelting", ()
         expect(mineRes.result?.extractedOreCount).toBe(24);
         expect(mineRes.result?.isCriticalStrike).toBe(true);
         expect(mineRes.result?.foundRareGem).toBe("VOID_DIAMOND");
-        expect(mineRes.result?.remainingVeinCapacity).toBe(26); // 50 - 24
+        expect(mineRes.result?.remainingVeinCapacity).toBe(26);
         expect(drill.currentDurability).toBe(312); // 320 - 8
 
-        // Smelt 24 ores into 12 refined metal bars
+        // Smelt 24 Darkstone ores at 4:1 ratio -> 6 refined metal bars
         const smeltRes = AncientRunicMiningExcavationEngine.smeltOre(24, "ABYSSAL_DARKSTONE_MONOLITH");
         expect(smeltRes.success).toBe(true);
-        expect(smeltRes.refinedBarsProduced).toBe(12);
+        expect(smeltRes.refinedBarsProduced).toBe(6);
+        expect(smeltRes.requiredPerBar).toBe(4);
+    });
+
+    it("surfaces remainingDurability on glancing swing failure path", () => {
+        const copperPick = AncientRunicMiningExcavationEngine.forgeMiningTool("miner_glance", "COPPER_PICKAXE", 100000); // 75% success
+        const pyriteVein = AncientRunicMiningExcavationEngine.discoverOreVein("VEIN_OF_PYRITE", 15);
+
+        // Strike roll 0.95 (95 > 75%) -> Glancing swing
+        const glanceRes = AncientRunicMiningExcavationEngine.mineVein(copperPick, pyriteVein, 0.95);
+        expect(glanceRes.success).toBe(false);
+        expect(glanceRes.remainingDurability).toBe(72); // 80 - 8
+        expect(glanceRes.reason).toContain("glanced off stone");
     });
 
     it("rejects mining when tool mining power is insufficient for vein hardness", () => {
@@ -44,7 +56,7 @@ describe("AncientRunicMiningExcavationEngine Subterranean Mining & Smelting", ()
         const failRes = AncientRunicMiningExcavationEngine.mineVein(copperPick, mithrilVein);
         expect(failRes.success).toBe(false);
         expect(failRes.reason).toContain("Pickaxe deflected");
-        expect(copperPick.currentDurability).toBe(80); // Durability not consumed
+        expect(copperPick.currentDurability).toBe(80);
     });
 
     it("rejects mining when vein is already depleted", () => {
