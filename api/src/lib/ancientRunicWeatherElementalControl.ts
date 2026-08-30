@@ -174,7 +174,8 @@ export class AncientRunicWeatherElementalControlEngine {
         }
 
         const towerData = TOWER_CATALOG[tower.towerType];
-        const regenAmount = (towerData.essenceRegenPerMinute / 60) * sec;
+        const regenPerMinute = towerData ? towerData.essenceRegenPerMinute : 0;
+        const regenAmount = (regenPerMinute / 60) * sec;
         tower.currentEssence = Math.min(tower.maxEssence, tower.currentEssence + regenAmount);
 
         return {
