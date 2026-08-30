@@ -93,8 +93,9 @@ export class AncientRunicGuildVaultEconomyEngine {
         }
 
         const tax = Math.floor(grossGoldEarned * (vault.taxRatePercent / 100));
-        const actualTaxDeposited = Math.min(tax, vault.maxGoldCapacity - vault.currentGoldBalance);
-        const netPlayer = grossGoldEarned - actualTaxDeposited;
+        const capacityHeadroom = Math.max(0, vault.maxGoldCapacity - vault.currentGoldBalance);
+        const actualTaxDeposited = Math.min(tax, capacityHeadroom);
+        const netPlayer = grossGoldEarned - tax;
 
         vault.currentGoldBalance += actualTaxDeposited;
 
@@ -106,15 +107,20 @@ export class AncientRunicGuildVaultEconomyEngine {
     }
 
     /**
-     * Proposes a multi-sig gold withdrawal.
+     * Proposes a multi-sig gold withdrawal (requires GUILD_MASTER or GUILD_OFFICER rank).
      */
     public static proposeWithdrawal(
         vault: ActiveGuildVault,
         requesterPlayerId: string,
+        requesterRank: GuildMemberRank,
         targetPlayerId: string,
         amountGold: number,
         currentEpochMs = Date.now()
     ): WithdrawalProposal {
+        if (requesterRank !== "GUILD_MASTER" && requesterRank !== "GUILD_OFFICER") {
+            throw new Error("Unauthorized: Only Guild Master or Guild Officers can propose withdrawals.");
+        }
+
         if (!vault || !Number.isFinite(amountGold) || amountGold <= 0 || amountGold > vault.currentGoldBalance) {
             throw new Error("Invalid withdrawal proposal: amount exceeds treasury balance.");
         }
@@ -126,7 +132,7 @@ export class AncientRunicGuildVaultEconomyEngine {
             requesterPlayerId,
             targetPlayerId,
             amountGold,
-            signatures: new Set([requesterPlayerId]), // Requester signs by default
+            signatures: new Set([requesterPlayerId]),
             isExecuted: false,
             createdEpochMs: currentEpochMs,
         };
@@ -138,10 +144,15 @@ export class AncientRunicGuildVaultEconomyEngine {
     public static signWithdrawalProposal(
         vault: ActiveGuildVault,
         proposal: WithdrawalProposal,
-        officerPlayerId: string
+        officerPlayerId: string,
+        officerRank: GuildMemberRank
     ): { success: boolean; totalSignatures: number; requiredSignatures: number; isExecuted: boolean; reason?: string } {
         if (!vault || !proposal) {
             return { success: false, totalSignatures: 0, requiredSignatures: 0, isExecuted: false, reason: "Invalid vault or proposal." };
+        }
+
+        if (officerRank !== "GUILD_MASTER" && officerRank !== "GUILD_OFFICER") {
+            return { success: false, totalSignatures: proposal.signatures.size, requiredSignatures: 0, isExecuted: false, reason: "Unauthorized: Signer must be a Guild Officer or Guild Master." };
         }
 
         if (proposal.isExecuted) {
