@@ -20,7 +20,6 @@ describe("AncientRunicJewelcraftingGemSettingEngine Gem Socketing & Resonance", 
             ],
         };
 
-        // Red Gem into Red Slot: 20% base resonance + 35% Astral Font bonus = 55% resonance (+40 * 1.55 = +62 Physical Damage)
         const socketRes = AncientRunicJewelcraftingGemSettingEngine.socketGemstone(
             font,
             sword,
@@ -33,7 +32,24 @@ describe("AncientRunicJewelcraftingGemSettingEngine Gem Socketing & Resonance", 
         expect(socketRes.socketedSlot?.socketedGem?.gemType).toBe("RUBY_OF_CARNAGE");
         expect(socketRes.socketedSlot?.socketedGem?.appliedStatValue).toBe(62);
         expect(socketRes.socketedSlot?.socketedGem?.hasResonanceMatchBonus).toBe(true);
-        expect(font.currentDurability).toBe(240); // 250 - 10
+        expect(font.currentDurability).toBe(240);
+    });
+
+    it("handles shattered gem setting failure path consuming durability and destroying gem", () => {
+        const bench = AncientRunicJewelcraftingGemSettingEngine.constructWorkbench("j_fail", "OBSIDIAN_FACETING_WORKBENCH", 100000); // 85% success
+        const helm: SocketableEquipmentItem = {
+            itemId: "helm_fail",
+            itemName: "Iron Helm",
+            sockets: [{ slotId: "s0", socketColor: "RED" }],
+        };
+
+        // Roll 0.95 (95 > 85% success) -> Shattered failure
+        const failRes = AncientRunicJewelcraftingGemSettingEngine.socketGemstone(bench, helm, 0, "RUBY_OF_CARNAGE", () => 0.95);
+        expect(failRes.success).toBe(false);
+        expect(failRes.isGemDestroyed).toBe(true);
+        expect(failRes.reason).toContain("shattered");
+        expect(failRes.remainingDurability).toBe(90); // 100 - 10
+        expect(helm.sockets[0].socketedGem).toBeUndefined();
     });
 
     it("sockets Diamond of Invulnerability into non-prismatic slot with universal match", () => {
@@ -44,7 +60,6 @@ describe("AncientRunicJewelcraftingGemSettingEngine Gem Socketing & Resonance", 
             sockets: [{ slotId: "s0", socketColor: "GREEN" }],
         };
 
-        // Diamond is PRISMATIC -> universal resonance match (25 base * 1.40 = 35)
         const res = AncientRunicJewelcraftingGemSettingEngine.socketGemstone(bench, helm, 0, "DIAMOND_OF_INVULNERABILITY", () => 0.1);
         expect(res.success).toBe(true);
         expect(res.socketedSlot?.socketedGem?.appliedStatValue).toBe(35);

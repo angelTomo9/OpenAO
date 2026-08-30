@@ -4,7 +4,7 @@ import crypto from "node:crypto";
  * Ancient Runic Jewelcrafting Gem Setting, Prismatic Faceting & Socket Synthesis Engine for OpenAO MMORPG.
  * Simulates jewelcrafting workbenches (Obsidian Workbench, Celestial Bench, Prismatic Astral Font),
  * cut gemstones (Ruby of Carnage, Sapphire of Intellect, Emerald of Vitality, Diamond of Invulnerability),
- * socket types (RED, BLUE, GREEN, PRISMATIC), socket color matching resonance (+20%), and chisel unsocketing.
+ * socket types (RED, BLUE, GREEN, PRISMATIC), socket color matching resonance (+20% to +55%), and chisel unsocketing.
  */
 
 export type JewelcraftingWorkbenchType = "OBSIDIAN_FACETING_WORKBENCH" | "CELESTIAL_LAPIDARY_BENCH" | "PRISMATIC_ASTRAL_FONT";
@@ -102,7 +102,7 @@ export class AncientRunicJewelcraftingGemSettingEngine {
         slotIndex: number,
         gemType: CutGemstoneType,
         rng: () => number = Math.random
-    ): { success: boolean; socketedSlot?: EquipmentSocketSlot; remainingDurability: number; reason?: string } {
+    ): { success: boolean; socketedSlot?: EquipmentSocketSlot; isGemDestroyed?: boolean; remainingDurability: number; reason?: string } {
         if (!workbench || !workbench.isFunctional || workbench.currentDurability < this.DURABILITY_COST_PER_SETTING) {
             return {
                 success: false,
@@ -129,9 +129,10 @@ export class AncientRunicJewelcraftingGemSettingEngine {
             return { success: false, remainingDurability: workbench.currentDurability, reason: `Unknown gemstone type: ${String(gemType)}` };
         }
 
-        // Deduct durability
+        // Deduct durability robustly
         workbench.currentDurability -= this.DURABILITY_COST_PER_SETTING;
-        if (workbench.currentDurability === 0) {
+        if (workbench.currentDurability <= 0) {
+            workbench.currentDurability = Math.max(0, workbench.currentDurability);
             workbench.isFunctional = false;
         }
 
@@ -140,8 +141,9 @@ export class AncientRunicJewelcraftingGemSettingEngine {
         if (roll > wbData.baseSuccessRatePercent) {
             return {
                 success: false,
+                isGemDestroyed: true,
                 remainingDurability: workbench.currentDurability,
-                reason: `Gem setting shattered: rolled ${roll.toFixed(1)}, needed <= ${wbData.baseSuccessRatePercent}.`,
+                reason: `Gem setting shattered: rolled ${roll.toFixed(1)}, needed <= ${wbData.baseSuccessRatePercent}. Gem is consumed and durability was deducted.`,
             };
         }
 
@@ -162,6 +164,7 @@ export class AncientRunicJewelcraftingGemSettingEngine {
         return {
             success: true,
             socketedSlot: slot,
+            isGemDestroyed: false,
             remainingDurability: workbench.currentDurability,
         };
     }
