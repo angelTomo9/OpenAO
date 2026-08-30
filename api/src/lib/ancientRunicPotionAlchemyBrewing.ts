@@ -4,7 +4,7 @@ import crypto from "node:crypto";
  * Ancient Runic Potion Alchemy Brewing, Herb Maceration & Flask Infusion Engine for OpenAO MMORPG.
  * Simulates alchemy cauldrons (Copper Pot, Obsidian Alembic, Celestial Crucible),
  * alchemical herb ingredients (Bloodroot, Moonpetal, Starshroom, Void Lotus),
- * temperature regulation (80C to 280C), recipe crafting, and flask purity ratings (0% to 100%).
+ * temperature regulation (80C to 280C), recipe crafting, and differentiated flask purity ratings (0% to 100%).
  */
 
 export type AlchemyCauldronType = "COPPER_ALCHEMICAL_POT" | "OBSIDIAN_DISTILLATION_ALEMBIC" | "CELESTIAL_CRUCIBLE";
@@ -157,8 +157,9 @@ export class AncientRunicPotionAlchemyBrewingEngine {
             return { success: false, reason: `Alchemy brewing ruined: rolled ${roll.toFixed(1)}, needed <= ${cauldronData.baseSuccessRatePercent}.` };
         }
 
-        // Calculate flask purity (100 - tempDiff * 2 + cauldron purity bonus)
-        const purityScore = Math.min(100, Math.max(10, 100 - (tempDiff * 2) + cauldronData.flaskPurityBonusPercent));
+        // Calculate flask purity (base 50 - tempDiff * 2 + cauldron flask purity bonus)
+        const basePurity = Math.max(10, 50 - (tempDiff * 2));
+        const purityScore = Math.min(100, Math.round(basePurity + cauldronData.flaskPurityBonusPercent));
         const uuid = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${currentEpochMs}_${Math.random()}`;
 
         const potionFlask: BrewedPotionFlask = {

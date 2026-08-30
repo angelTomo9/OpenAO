@@ -5,7 +5,7 @@ import {
 } from "../lib/ancientRunicPotionAlchemyBrewing.js";
 
 describe("AncientRunicPotionAlchemyBrewingEngine Alchemy & Flask Infusion", () => {
-    it("heats Celestial Crucible to 240C and brews Potion of Invulnerability with 100% purity", () => {
+    it("heats Celestial Crucible to 240C and brews Potion of Invulnerability with 100% purity (50 base + 50 crucible bonus)", () => {
         const crucible = AncientRunicPotionAlchemyBrewingEngine.constructCauldron("alchemist_01", "CELESTIAL_CRUCIBLE", 20, 100000);
         expect(crucible.cauldronType).toBe("CELESTIAL_CRUCIBLE");
         expect(crucible.maxHeatTemperatureCelsius).toBe(300);
@@ -20,7 +20,7 @@ describe("AncientRunicPotionAlchemyBrewingEngine Alchemy & Flask Infusion", () =
             crucible,
             "POTION_OF_INVULNERABILITY",
             ["VOID_LOTUS", "MOONPETAL"],
-            () => 0.1, // Success roll
+            () => 0.1,
             100000
         );
 
@@ -30,10 +30,24 @@ describe("AncientRunicPotionAlchemyBrewingEngine Alchemy & Flask Infusion", () =
         expect(brewRes.potionFlask?.durationSeconds).toBe(15);
     });
 
+    it("differentiates cauldron purity: Copper Pot yields 60% purity at optimal temp", () => {
+        const pot = AncientRunicPotionAlchemyBrewingEngine.constructCauldron("alch_copper", "COPPER_ALCHEMICAL_POT", 20, 100000);
+        AncientRunicPotionAlchemyBrewingEngine.heatCauldron(pot, 120);
+
+        const brew = AncientRunicPotionAlchemyBrewingEngine.brewPotion(
+            pot,
+            "ELIXIR_OF_BERSERK_FURY",
+            ["BLOODROOT", "STARSHROOM"],
+            () => 0.1
+        );
+
+        expect(brew.success).toBe(true);
+        expect(brew.potionFlask?.purityRatingPercent).toBe(60); // 50 base + 10 copper bonus
+    });
+
     it("rejects brewing when temperature is outside optimal tolerance range (+-20C)", () => {
         const pot = AncientRunicPotionAlchemyBrewingEngine.constructCauldron("alch_02", "COPPER_ALCHEMICAL_POT", 20, 100000);
 
-        // Elixir of Berserk Fury optimal temp is 120C. Current temp is 20C (diff 100 > 20)
         const failBrew = AncientRunicPotionAlchemyBrewingEngine.brewPotion(
             pot,
             "ELIXIR_OF_BERSERK_FURY",
@@ -48,7 +62,6 @@ describe("AncientRunicPotionAlchemyBrewingEngine Alchemy & Flask Infusion", () =
     it("rejects brewing when required alchemical ingredients are missing", () => {
         const alembic = AncientRunicPotionAlchemyBrewingEngine.constructCauldron("alch_03", "OBSIDIAN_DISTILLATION_ALEMBIC", 160, 100000);
 
-        // Draught of Astral Mana requires Moonpetal + Starshroom. Only providing Bloodroot
         const missingRes = AncientRunicPotionAlchemyBrewingEngine.brewPotion(
             alembic,
             "DRAUGHT_OF_ASTRAL_MANA",
@@ -61,7 +74,7 @@ describe("AncientRunicPotionAlchemyBrewingEngine Alchemy & Flask Infusion", () =
     });
 
     it("rejects heating beyond cauldron maximum heat capacity", () => {
-        const pot = AncientRunicPotionAlchemyBrewingEngine.constructCauldron("alch_04", "COPPER_ALCHEMICAL_POT", 20, 100000); // Max 150C
+        const pot = AncientRunicPotionAlchemyBrewingEngine.constructCauldron("alch_04", "COPPER_ALCHEMICAL_POT", 20, 100000);
 
         const overheat = AncientRunicPotionAlchemyBrewingEngine.heatCauldron(pot, 250);
         expect(overheat.success).toBe(false);
