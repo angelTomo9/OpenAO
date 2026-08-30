@@ -5,7 +5,7 @@ import crypto from "node:crypto";
  * Simulates woodcutting axes (Bronze Felling Axe, Runic Mithril Hatchet, Celestial Void Cleaver),
  * ancient timber trees (Ancient Pine, Ironwood Sentinel, Celestial Starwood Elder),
  * wood hardness requirements vs chopping power, critical chop rolls (2.0x yield and rare resin drops),
- * sawmill plank milling with per-timber ratios, and axe maintenance.
+ * sawmill plank milling with per-timber integer ratios, and axe maintenance.
  */
 
 export type WoodcuttingAxeType = "BRONZE_FELLING_AXE" | "RUNIC_MITHRIL_HATCHET" | "CELESTIAL_VOID_CLEAVER";
@@ -213,8 +213,8 @@ export class AncientRunicWoodcuttingTimberLumberEngine {
         logCount: number,
         treeType: AncientTreeType
     ): { success: boolean; lumberPlanksProduced: number; requiredLogsPerPlank: number; reason?: string } {
-        if (!Number.isFinite(logCount) || logCount <= 0) {
-            return { success: false, lumberPlanksProduced: 0, requiredLogsPerPlank: 0, reason: "Invalid log quantity." };
+        if (!Number.isFinite(logCount) || !Number.isInteger(logCount) || logCount <= 0) {
+            return { success: false, lumberPlanksProduced: 0, requiredLogsPerPlank: 0, reason: "Invalid integer log quantity." };
         }
 
         const treeData = TREE_CATALOG[treeType];

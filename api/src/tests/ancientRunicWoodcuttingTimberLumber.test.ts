@@ -38,6 +38,12 @@ describe("AncientRunicWoodcuttingTimberLumberEngine Timber Harvesting & Sawmill"
         expect(millRes.requiredLogsPerPlank).toBe(4);
     });
 
+    it("rejects fractional log counts in sawmill milling", () => {
+        const failFraction = AncientRunicWoodcuttingTimberLumberEngine.millLumber(3.5, "ANCIENT_PINE_TREE");
+        expect(failFraction.success).toBe(false);
+        expect(failFraction.reason).toContain("Invalid integer log quantity");
+    });
+
     it("surfaces remainingDurability on bark glance failure roll", () => {
         const axe = AncientRunicWoodcuttingTimberLumberEngine.forgeAxe("lj_glance", "BRONZE_FELLING_AXE", 100000); // 75% success
         const pine = AncientRunicWoodcuttingTimberLumberEngine.discoverTree("ANCIENT_PINE_TREE", 20);
