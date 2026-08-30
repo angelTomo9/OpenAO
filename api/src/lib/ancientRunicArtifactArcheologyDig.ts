@@ -4,7 +4,7 @@ import crypto from "node:crypto";
  * Ancient Runic Artifact Archeology Dig, Fossil Excavation & Relic Restoration Engine for OpenAO MMORPG.
  * Simulates archeology survey tools (Bristle Brush, Bronze Trowel, Runic Sonic Sifter),
  * historical dig sites (Sandstone Ruins, Sunken Catacombs, Astral Necropolis),
- * artifact fragment purity evaluations (0% to 100%), museum donation gold rewards, and tool wear.
+ * excavation difficulty penalties, artifact fragment purity evaluations (0% to 100%), museum donation gold rewards, and tool wear.
  */
 
 export type ArcheologyToolType = "BRISTLE_SURVEY_BRUSH" | "BRONZE_EXCAVATION_TROWEL" | "RUNIC_SONIC_SIFTER";
@@ -121,9 +121,11 @@ export class AncientRunicArtifactArcheologyDigEngine {
             site.isFullyExcavated = true;
         }
 
-        // Calculate purity and museum reward
+        // Calculate purity factored by site excavation difficulty
         const baseRoll = Number.isFinite(purityRoll) ? Math.max(0, Math.min(1, purityRoll)) : Math.random();
-        const purityScore = Math.min(100, Math.round((baseRoll * 60) + toolData.delicatePurityBonusPercent));
+        const difficultyPenalty = Math.round(siteData.excavationDifficulty * 0.25);
+        const rawPurity = Math.round((baseRoll * 60) + toolData.delicatePurityBonusPercent - difficultyPenalty);
+        const purityScore = Math.max(5, Math.min(100, rawPurity));
 
         const rewardMultiplier = 0.5 + (purityScore / 100) + (toolData.rareDiscoveryBonusPercent / 100);
         const goldReward = Math.round(siteData.baseGoldValue * rewardMultiplier);
