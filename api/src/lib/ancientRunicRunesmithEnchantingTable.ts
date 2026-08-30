@@ -100,7 +100,7 @@ export class AncientRunicRunesmithEnchantingTableEngine {
         table: ActiveEnchantingTable,
         equipment: EnchantableEquipment,
         runeType: PrimalRuneType,
-        rng: () => number = () => 0
+        rng: () => number = Math.random
     ): { success: boolean; appliedAffix?: string; finalBonusValue?: number; remainingCatalyst: number; reason?: string } {
         if (!table || !table.isFunctional || table.currentCatalystDurability < this.CATALYST_COST_PER_ENCHANT) {
             return {

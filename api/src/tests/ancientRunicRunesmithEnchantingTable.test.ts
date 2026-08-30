@@ -21,7 +21,7 @@ describe("AncientRunicRunesmithEnchantingTableEngine Imbuing & Affixes", () => {
         };
 
         // Rune of Berserking base 35 * 2.0 Legendary multiplier = +70 Physical Damage
-        const result = AncientRunicRunesmithEnchantingTableEngine.imbueRune(altar, sword, "RUNE_OF_BERSERKING", () => 0.5); // roll 50 <= 99
+        const result = AncientRunicRunesmithEnchantingTableEngine.imbueRune(altar, sword, "RUNE_OF_BERSERKING", () => 0.5);
         expect(result.success).toBe(true);
         expect(result.appliedAffix).toBe("Berserker's");
         expect(result.finalBonusValue).toBe(70);
@@ -31,7 +31,7 @@ describe("AncientRunicRunesmithEnchantingTableEngine Imbuing & Affixes", () => {
     });
 
     it("consumes catalyst and returns failure when imbuing roll exceeds success rate", () => {
-        const anvil = AncientRunicRunesmithEnchantingTableEngine.constructTable("smith_fail", "OBSIDIAN_RUNESMITH_ANVIL", 100000); // 85% success rate
+        const anvil = AncientRunicRunesmithEnchantingTableEngine.constructTable("smith_fail", "OBSIDIAN_RUNESMITH_ANVIL", 100000);
         const sword: EnchantableEquipment = {
             equipmentId: "sword_fail",
             equipmentName: "Iron Sword",
@@ -45,8 +45,8 @@ describe("AncientRunicRunesmithEnchantingTableEngine Imbuing & Affixes", () => {
         const failRoll = AncientRunicRunesmithEnchantingTableEngine.imbueRune(anvil, sword, "RUNE_OF_BERSERKING", () => 0.90);
         expect(failRoll.success).toBe(false);
         expect(failRoll.reason).toContain("Imbuing failed");
-        expect(failRoll.remainingCatalyst).toBe(85); // 100 - 15 catalyst consumed
-        expect(sword.prefixAffix).toBeUndefined(); // Affix not applied
+        expect(failRoll.remainingCatalyst).toBe(85);
+        expect(sword.prefixAffix).toBeUndefined();
     });
 
     it("imbues suffix of the Aegis on armor item", () => {
@@ -54,7 +54,7 @@ describe("AncientRunicRunesmithEnchantingTableEngine Imbuing & Affixes", () => {
         const shield: EnchantableEquipment = {
             equipmentId: "shield_01",
             equipmentName: "Runic Shield",
-            qualityTier: "RARE", // 1.25x multiplier
+            qualityTier: "RARE",
             bonusPhysicalDamage: 0,
             bonusMagicResistance: 10,
             bonusAttackSpeedPercent: 0,
@@ -75,21 +75,21 @@ describe("AncientRunicRunesmithEnchantingTableEngine Imbuing & Affixes", () => {
             equipmentId: "bow_01",
             equipmentName: "Storm Bow",
             qualityTier: "COMMON",
-            suffixAffix: "of the Wind", // Already occupied
+            suffixAffix: "of the Wind",
             bonusPhysicalDamage: 20,
             bonusMagicResistance: 0,
             bonusAttackSpeedPercent: 10,
         };
 
-        const failRes = AncientRunicRunesmithEnchantingTableEngine.imbueRune(anvil, bow, "RUNE_OF_HASTE"); // Suffix rune
+        const failRes = AncientRunicRunesmithEnchantingTableEngine.imbueRune(anvil, bow, "RUNE_OF_HASTE");
         expect(failRes.success).toBe(false);
         expect(failRes.reason).toContain("already has suffix affix");
-        expect(anvil.currentCatalystDurability).toBe(100); // No catalyst deducted
+        expect(anvil.currentCatalystDurability).toBe(100);
     });
 
     it("rejects imbuing when catalyst is depleted and allows refueling", () => {
         const anvil = AncientRunicRunesmithEnchantingTableEngine.constructTable("smith_04", "OBSIDIAN_RUNESMITH_ANVIL", 100000);
-        anvil.currentCatalystDurability = 10; // Insufficient for 15 cost
+        anvil.currentCatalystDurability = 10;
 
         const helm: EnchantableEquipment = {
             equipmentId: "helm_01",
@@ -113,5 +113,14 @@ describe("AncientRunicRunesmithEnchantingTableEngine Imbuing & Affixes", () => {
         const succ = AncientRunicRunesmithEnchantingTableEngine.imbueRune(anvil, helm, "RUNE_OF_BERSERKING", () => 0.1);
         expect(succ.success).toBe(true);
         expect(anvil.currentCatalystDurability).toBe(45);
+    });
+
+    it("guards against null inputs and unsupported table types", () => {
+        expect(() => AncientRunicRunesmithEnchantingTableEngine.constructTable("s", "WOODEN_STOOL" as any)).toThrow(
+            "Unsupported table type"
+        );
+
+        expect(AncientRunicRunesmithEnchantingTableEngine.imbueRune(null as any, null as any, "RUNE_OF_BERSERKING").success).toBe(false);
+        expect(AncientRunicRunesmithEnchantingTableEngine.refuelCatalyst(null as any).success).toBe(false);
     });
 });
