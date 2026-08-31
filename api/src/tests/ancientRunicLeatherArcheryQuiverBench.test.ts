@@ -63,7 +63,7 @@ describe("AncientRunicLeatherArcheryQuiverBenchEngine Quiver Benches & Ammunitio
         bench.currentDurability = 15;
         expect(bench.isFunctional).toBe(true);
 
-        // First craft succeeds: 15 - 10 = 5 (< 10), so isFunctional flips to false
+        // First craft succeeds: 15 - 10 = 5 (< 10), so isFunctional flips to false in updatedBench
         const res1 = AncientRunicLeatherArcheryQuiverBenchEngine.craftQuiver(
             bench,
             "RANGER_SWIFT_DRAW_HIP_QUIVER",
@@ -72,11 +72,11 @@ describe("AncientRunicLeatherArcheryQuiverBenchEngine Quiver Benches & Ammunitio
         );
         expect(res1.success).toBe(true);
         expect(res1.remainingDurability).toBe(5);
-        expect(bench.isFunctional).toBe(false);
+        expect(res1.updatedBench?.isFunctional).toBe(false);
 
-        // Subsequent craft is rejected and returns fallback array
+        // Subsequent craft on updated bench is rejected and returns fallback array
         const res2 = AncientRunicLeatherArcheryQuiverBenchEngine.craftQuiver(
-            bench,
+            res1.updatedBench!,
             "RANGER_SWIFT_DRAW_HIP_QUIVER",
             ["TANNED_DEERSKIN_QUIVER_BODY", "TANNED_DEERSKIN_QUIVER_BODY"]
         );
@@ -113,7 +113,7 @@ describe("AncientRunicLeatherArcheryQuiverBenchEngine Quiver Benches & Ammunitio
         expect(fail.success).toBe(false);
         expect(fail.reason).toContain("split");
         expect(fail.remainingProvidedLeathers?.length).toBe(1); // 3 - 2 = 1 remaining
-        expect(bench.currentDurability).toBe(65); // 75 - 10
+        expect(fail.remainingDurability).toBe(65); // 75 - 10
     });
 
     it("gates isFunctional in maintainBench based on DURABILITY_COST_PER_CRAFT threshold", () => {

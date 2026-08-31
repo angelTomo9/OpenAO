@@ -6,7 +6,7 @@ import crypto from "node:crypto";
  * raw tanned deerskin and hardened ironwood spine stiffeners (Tanned Deerskin Quiver Body, Hardened Ironwood Divider Stiffener, Celestial Void Starlight Ammunition Leather),
  * ranger swift-draw hip quivers and endless arrow quiver recipes (Ranger Swift-Draw Hip Quiver, Master Sniper Back Quiver, Celestial Void Seraphic Endless Arrow Quiver),
  * independent draw speed fluidity ratings (scaled across catalog baselines ~14% to 100%), calibrated clamped ranged attack speed and clamped ammo retention scaling,
- * upfront leather material deduction on all craft attempts, consistent remainingProvidedLeathers return shapes across all paths, cached static catalog maxima, crypto-secure default gameplay rolls strictly in [0, 1), authoritative catalog power ratio without dead instance fields, and quiver bench maintenance.
+ * upfront leather material deduction on all craft attempts, consistent remainingProvidedLeathers return shapes across all paths, immutable bench cloning for safe rollbacks, cached static catalog maxima, crypto-secure default gameplay rolls strictly in [0, 1), authoritative catalog power ratio without dead instance fields, and quiver bench maintenance.
  */
 
 export type QuiverBenchType = "OAK_QUIVER_STITCHING_BENCH" | "RUNIC_IRONWOOD_ARROW_DIVIDER_RIG" | "CELESTIAL_VOID_SERAPHIC_QUIVER_SANCTUM";
@@ -119,7 +119,7 @@ export class AncientRunicLeatherArcheryQuiverBenchEngine {
 
     /**
      * Forms and stitches deerskin quiver bodies and arrow dividers into hip and back quivers.
-     * Note: Mutates the passed `bench` in place and returns it as `updatedBench` for caller ergonomics.
+     * Returns an updated clone of `bench` leaving the input instance immutable.
      */
     public static craftQuiver(
         bench: ActiveQuiverBench,
@@ -134,7 +134,7 @@ export class AncientRunicLeatherArcheryQuiverBenchEngine {
         if (!bench || !bench.isFunctional || bench.currentDurability < this.DURABILITY_COST_PER_CRAFT) {
             return {
                 success: false,
-                updatedBench: bench,
+                updatedBench: bench ? { ...bench } : undefined,
                 remainingDurability: bench?.currentDurability ?? 0,
                 remainingProvidedLeathers: fallbackLeathers,
                 reason: `Quiver bench is warped or lacks durability (requires ${this.DURABILITY_COST_PER_CRAFT}).`,
@@ -143,16 +143,16 @@ export class AncientRunicLeatherArcheryQuiverBenchEngine {
 
         const benchData = QUIVER_BENCH_CATALOG[bench.benchType];
         if (!benchData) {
-            return { success: false, updatedBench: bench, remainingDurability: bench.currentDurability, remainingProvidedLeathers: fallbackLeathers, reason: `Unknown bench model: ${String(bench.benchType)}` };
+            return { success: false, updatedBench: { ...bench }, remainingDurability: bench.currentDurability, remainingProvidedLeathers: fallbackLeathers, reason: `Unknown bench model: ${String(bench.benchType)}` };
         }
 
         const recipe = QUIVER_RECIPE_CATALOG[recipeType];
         if (!recipe) {
-            return { success: false, updatedBench: bench, remainingDurability: bench.currentDurability, remainingProvidedLeathers: fallbackLeathers, reason: `Unknown quiver recipe: ${String(recipeType)}` };
+            return { success: false, updatedBench: { ...bench }, remainingDurability: bench.currentDurability, remainingProvidedLeathers: fallbackLeathers, reason: `Unknown quiver recipe: ${String(recipeType)}` };
         }
 
         if (!Array.isArray(providedLeathers)) {
-            return { success: false, updatedBench: bench, remainingDurability: bench.currentDurability, remainingProvidedLeathers: [], reason: "Invalid leathers array." };
+            return { success: false, updatedBench: { ...bench }, remainingDurability: bench.currentDurability, remainingProvidedLeathers: [], reason: "Invalid leathers array." };
         }
 
         // Count matching leather materials
@@ -160,18 +160,21 @@ export class AncientRunicLeatherArcheryQuiverBenchEngine {
         if (matchingCount < recipe.requiredLeatherCount) {
             return {
                 success: false,
-                updatedBench: bench,
+                updatedBench: { ...bench },
                 remainingDurability: bench.currentDurability,
                 remainingProvidedLeathers: fallbackLeathers,
                 reason: `Insufficient quiver leather: requires ${recipe.requiredLeatherCount}x ${recipe.requiredLeatherType}, provided ${matchingCount}.`,
             };
         }
 
-        // Deduct durability in place
-        bench.currentDurability -= this.DURABILITY_COST_PER_CRAFT;
-        if (bench.currentDurability < this.DURABILITY_COST_PER_CRAFT) {
-            bench.currentDurability = Math.max(0, bench.currentDurability);
-            bench.isFunctional = false;
+        // Create updated bench clone
+        const updatedBench = { ...bench };
+
+        // Deduct durability on clone
+        updatedBench.currentDurability -= this.DURABILITY_COST_PER_CRAFT;
+        if (updatedBench.currentDurability < this.DURABILITY_COST_PER_CRAFT) {
+            updatedBench.currentDurability = Math.max(0, updatedBench.currentDurability);
+            updatedBench.isFunctional = false;
         }
 
         // Deduct materials upfront on all craft attempts
@@ -190,8 +193,8 @@ export class AncientRunicLeatherArcheryQuiverBenchEngine {
         if (rollPercent > benchData.baseSuccessRatePercent) {
             return {
                 success: false,
-                updatedBench: bench,
-                remainingDurability: bench.currentDurability,
+                updatedBench,
+                remainingDurability: updatedBench.currentDurability,
                 remainingProvidedLeathers: remaining,
                 reason: `Quiver split: divider stitching cleaved deerskin seam, rolled ${rollPercent.toFixed(1)}, needed <= ${benchData.baseSuccessRatePercent}.`,
             };
@@ -227,8 +230,8 @@ export class AncientRunicLeatherArcheryQuiverBenchEngine {
         return {
             success: true,
             quiver,
-            updatedBench: bench,
-            remainingDurability: bench.currentDurability,
+            updatedBench,
+            remainingDurability: updatedBench.currentDurability,
             remainingProvidedLeathers: remaining,
         };
     }
