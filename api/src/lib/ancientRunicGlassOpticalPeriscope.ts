@@ -6,7 +6,7 @@ import crypto from "node:crypto";
  * raw silica reflection plates and armored brass casing blanks (Silica Prism Reflection Plate, Armored Brass Tube Blank, Celestial Void Omniscient Starlight Prism),
  * horizon sight periscopes and seraphic omniscient periscope recipes (Scout Horizon-Sight Periscope, Subterranean Trench-View Scope, Celestial Void Seraphic Omniscient Periscope),
  * independent reconnaissance clarity ratings (scaled across catalog baselines ~14% to 100%), calibrated clamped true vision reveal radius and clamped stealth detection aura scaling,
- * upfront prism material deduction on all craft attempts, consistent remainingProvidedPrisms return shapes across all paths, cached static catalog maxima, crypto-secure default gameplay rolls, authoritative catalog power ratio without dead instance fields, and periscope bench maintenance.
+ * upfront prism material deduction on all craft attempts, consistent remainingProvidedPrisms return shapes across all paths, cached static catalog maxima, crypto-secure default gameplay rolls strictly in [0, 1), authoritative catalog power ratio without dead instance fields, and periscope bench maintenance.
  */
 
 export type PeriscopeBenchType = "CEDAR_PERISCOPE_ASSEMBLY_BENCH" | "RUNIC_BRASS_RECONNAISSANCE_GANTRY" | "CELESTIAL_VOID_HORIZON_SANCTUM";
@@ -59,8 +59,11 @@ export const PERISCOPE_BENCH_CATALOG: Record<PeriscopeBenchType, PeriscopeBenchD
 export const PERISCOPE_RECIPE_CATALOG: Record<ArcanePeriscopeRecipeType, ArcanePeriscopeRecipeData> = {
     SCOUT_HORIZON_SIGHT_PERISCOPE: { recipeType: "SCOUT_HORIZON_SIGHT_PERISCOPE", requiredMaterialType: "SILICA_PRISM_REFLECTION_PLATE", requiredMaterialCount: 2, baseTrueVisionRadiusPercent: 20, baseStealthDetectionPercent: 10 },
     SUBTERRANEAN_TRENCH_VIEW_SCOPE: { recipeType: "SUBTERRANEAN_TRENCH_VIEW_SCOPE", requiredMaterialType: "ARMORED_BRASS_TUBE_BLANK", requiredMaterialCount: 2, baseTrueVisionRadiusPercent: 45, baseStealthDetectionPercent: 25 },
-    CELESTIAL_VOID_SERAPHIC_OMNISCIENT_PERISCOPE: { recipeType: "CELESTIAL_VOID_SERAPHIC_OMNISCIENT_PERISCOPE", requiredMaterialType: "CELESTIAL_VOID_OMNISCIENT_STARLIGHT_PRISM", requiredMaterialCount: 2, baseTrueVisionRadiusPercent: 80, baseStealthDetectionPercent: 60 },
+    CELESTIAL_VOID_SERAPHIC_OMNISCIENT_PERISCOPE: { recipeType: "CELESTIAL_VOID_SERAPHIC_OMNISCIENT_PERISCOPE", requiredMaterialType: "CELESTIAL_VOID_OMNISENT_STARLIGHT_PRISM" as any, requiredMaterialCount: 2, baseTrueVisionRadiusPercent: 80, baseStealthDetectionPercent: 60 },
 };
+
+// Fix typo to match type definition
+PERISCOPE_RECIPE_CATALOG.CELESTIAL_VOID_SERAPHIC_OMNISCIENT_PERISCOPE.requiredMaterialType = "CELESTIAL_VOID_OMNISCIENT_STARLIGHT_PRISM";
 
 export class AncientRunicGlassOpticalPeriscopeEngine {
     public static readonly DURABILITY_COST_PER_CRAFT = 10;
@@ -90,7 +93,7 @@ export class AncientRunicGlassOpticalPeriscopeEngine {
         if (typeof crypto.randomInt === "function") {
             return crypto.randomInt(0, 1000000) / 1000000;
         }
-        return crypto.randomBytes(4).readUInt32LE(0) / 0xffffffff;
+        return crypto.randomBytes(4).readUInt32LE(0) / 0x100000000;
     }
 
     /**
