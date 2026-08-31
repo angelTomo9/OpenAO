@@ -6,7 +6,7 @@ import crypto from "node:crypto";
  * arcane colored glass sheets (Cobalt Arcane Glass, Crimson Dawn Glass, Celestial Void Prismatic Glass),
  * sanctuary window mural recipes (Sanctuary Rose Window, Archangel Dawn Mosaic, Celestial Void Oculus),
  * independent divine blessing ratings (0% to 100%), sanctuary heal aura and damage mitigation scaling,
- * glass sheet inventory deduction, cached static catalog maxima, and glazier table maintenance.
+ * upfront glass sheet inventory deduction on all craft attempts, cached static catalog maxima, and glazier table maintenance.
  */
 
 export type GlazierTableType = "LEADBOUND_GLAZIER_TABLE" | "RUNIC_CATHEDRAL_KILN" | "CELESTIAL_VOID_PRISM_SANCTUM";
@@ -110,7 +110,7 @@ export class AncientRunicGlassStainedGlassMuralEngine {
         craftRoll = Math.random(),
         blessingRoll = Math.random(),
         currentEpochMs = Date.now()
-    ): { success: boolean; window?: CraftedSanctuaryWindow; remainingDurability: number; reason?: string } {
+    ): { success: boolean; window?: CraftedSanctuaryWindow; remainingDurability: number; remainingProvidedSheets?: ArcaneGlassSheetType[]; reason?: string } {
         if (!table || !table.isFunctional || table.currentDurability < this.DURABILITY_COST_PER_CRAFT) {
             return {
                 success: false,
@@ -150,6 +150,16 @@ export class AncientRunicGlassStainedGlassMuralEngine {
             table.isFunctional = false;
         }
 
+        // Deduct materials upfront on all craft attempts to avoid free retries on failed crafts
+        const remaining = [...providedSheets];
+        let removed = 0;
+        for (let i = remaining.length - 1; i >= 0 && removed < recipe.requiredGlassCount; i--) {
+            if (remaining[i] === recipe.requiredGlassType) {
+                remaining.splice(i, 1);
+                removed++;
+            }
+        }
+
         const safeRoll = Number.isFinite(craftRoll) ? Math.max(0, Math.min(1, craftRoll)) : Math.random();
         const rollPercent = safeRoll * 100;
 
@@ -157,6 +167,7 @@ export class AncientRunicGlassStainedGlassMuralEngine {
             return {
                 success: false,
                 remainingDurability: table.currentDurability,
+                remainingProvidedSheets: remaining,
                 reason: `Came soldering warped: lead came melted unevenly during kiln firing, rolled ${rollPercent.toFixed(1)}, needed <= ${tableData.baseSuccessRatePercent}.`,
             };
         }
@@ -173,16 +184,6 @@ export class AncientRunicGlassStainedGlassMuralEngine {
 
         const finalHeal = Math.round(recipe.baseSanctuaryHealPerSec * qualityMultiplier);
         const finalMitigation = Math.round(recipe.baseDamageMitigationPercent * qualityMultiplier);
-
-        // Splice consumed sheets out of cloned array
-        const remaining = [...providedSheets];
-        let removed = 0;
-        for (let i = remaining.length - 1; i >= 0 && removed < recipe.requiredGlassCount; i--) {
-            if (remaining[i] === recipe.requiredGlassType) {
-                remaining.splice(i, 1);
-                removed++;
-            }
-        }
 
         const uuid = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${currentEpochMs}_${Math.random()}`;
 
@@ -202,6 +203,7 @@ export class AncientRunicGlassStainedGlassMuralEngine {
             success: true,
             window,
             remainingDurability: table.currentDurability,
+            remainingProvidedSheets: remaining,
         };
     }
 

@@ -76,18 +76,19 @@ describe("AncientRunicGlassStainedGlassMuralEngine Stained Glass & Sanctuary Mur
         expect(table.currentDurability).toBe(75);
     });
 
-    it("handles lead came warping failure roll consuming durability", () => {
+    it("handles lead came warping failure roll consuming durability and glass sheets", () => {
         const table = AncientRunicGlassStainedGlassMuralEngine.constructTable("glazier_03", "LEADBOUND_GLAZIER_TABLE", 100000); // 85% success
 
         const fail = AncientRunicGlassStainedGlassMuralEngine.craftWindow(
             table,
             "SANCTUARY_ROSE_WINDOW",
-            ["COBALT_ARCANE_GLASS", "COBALT_ARCANE_GLASS"],
+            ["COBALT_ARCANE_GLASS", "COBALT_ARCANE_GLASS", "COBALT_ARCANE_GLASS"],
             0.95
         );
 
         expect(fail.success).toBe(false);
         expect(fail.reason).toContain("soldering warped");
+        expect(fail.remainingProvidedSheets?.length).toBe(1); // 3 - 2 = 1 remaining
         expect(table.currentDurability).toBe(65); // 75 - 10
     });
 
