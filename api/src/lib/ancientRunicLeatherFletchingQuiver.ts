@@ -75,16 +75,13 @@ export class AncientRunicLeatherFletchingQuiverEngine {
     };
 
     /**
-     * Generates a crypto-secure UUID or collision-resistant hex string.
+     * Generates a crypto-secure UUID or 128-bit hex string using node:crypto.
      */
-    private static generateSecureId(currentEpochMs = Date.now()): string {
+    private static generateSecureId(): string {
         if (typeof crypto.randomUUID === "function") {
             return crypto.randomUUID();
         }
-        if (typeof crypto.randomBytes === "function") {
-            return crypto.randomBytes(16).toString("hex");
-        }
-        return `${currentEpochMs}_${Math.random().toString(36).substring(2, 15)}`;
+        return crypto.randomBytes(16).toString("hex");
     }
 
     /**
@@ -92,15 +89,14 @@ export class AncientRunicLeatherFletchingQuiverEngine {
      */
     public static constructTable(
         fletcherPlayerId: string,
-        tableType: FletchingTableType,
-        currentEpochMs = Date.now()
+        tableType: FletchingTableType
     ): ActiveFletchingTable {
         const data = FLETCHING_CATALOG[tableType];
         if (!data) {
             throw new Error(`Unsupported fletching table type: ${String(tableType)}`);
         }
 
-        const uuid = this.generateSecureId(currentEpochMs);
+        const uuid = this.generateSecureId();
 
         return {
             tableId: `fletcher_${tableType.toLowerCase()}_${uuid}`,
@@ -202,7 +198,7 @@ export class AncientRunicLeatherFletchingQuiverEngine {
         const finalCapacity = Math.round(recipe.baseArrowCapacity * qualityMultiplier);
         const finalHaste = Math.round(recipe.baseReloadSpeedHastePercent * qualityMultiplier);
 
-        const uuid = this.generateSecureId(currentEpochMs);
+        const uuid = this.generateSecureId();
 
         const quiver: CraftedQuiverPouch = {
             quiverId: `quiver_${recipeType.toLowerCase()}_${uuid}`,
