@@ -5,7 +5,7 @@ import crypto from "node:crypto";
  * Simulates trophy mounting benches and taxidermy flesh hook frames (Oak Trophy Mounting Bench, Runic Ironwood Taxidermy Rig, Celestial Void Seraphic Trophy Sanctum),
  * raw tanned direbear hides and carved mammoth ivory plaques (Tanned Direbear Trophy Hide, Carved Mammoth Ivory Plaque, Celestial Void Starlight Sovereign Trophy Leather),
  * dire wolf wall mounts and sovereign dragon trophy recipes (Hunter Dire Wolf Wall Mount, Champion Manticore Head Mount, Celestial Void Seraphic Dragon Sovereign Wall Mount),
- * independent intimidation aura & morale inspiring ratings (scaled across catalog baselines ~14% to 100%), calibrated clamped combat morale bonus and clamped resting stamina regeneration scaling,
+ * independent morale inspiring ratings (scaled across catalog baselines ~14% to 100%), calibrated clamped combat morale bonus and clamped resting stamina regeneration scaling,
  * upfront leather material deduction on all craft attempts, consistent remainingProvidedLeathers return shapes across all paths, immutable bench cloning for safe rollbacks on both craft and maintain operations, cached static catalog maxima, crypto-secure default gameplay rolls strictly in [0, 1), authoritative catalog power ratio without dead instance fields, and trophy bench maintenance.
  */
 
