@@ -6,7 +6,7 @@ import crypto from "node:crypto";
  * harvested game meats and cuts (Wild Boar Shank, Firecrest Phoenix Tenderloin, Celestial Void Kraken Fillet),
  * cooked broth and banquet recipes (Ranger Sustenance Broth, Phoenixfire Braised Steak, Celestial Void Kraken Banquet),
  * independent satiety ratings (0% to 100%), buff duration and stamina regen rate scaling,
- * upfront meat material deduction on all craft attempts, cached static catalog maxima, and cooking cauldron maintenance.
+ * upfront meat material deduction on all craft attempts, cached static catalog maxima, authoritative catalog power ratio, and cooking cauldron maintenance.
  */
 
 export type CookingCauldronType = "CAST_IRON_HEARTH_CAULDRON" | "RUNIC_STONE_STEWING_STATION" | "CELESTIAL_VOID_BANQUET_SANCTUM";
@@ -185,10 +185,10 @@ export class AncientRunicCulinaryCookingCauldronEngine {
             };
         }
 
-        // Calculate independent satiety score (0% to 100%) dynamically using cached catalog maxima
+        // Calculate independent satiety score (0% to 100%) dynamically using cached catalog maxima & authoritative catalog values
         const { maxPower, maxBonus } = this.CATALOG_MAXIMA;
         const safeSatietyRoll = Number.isFinite(satietyRoll) ? Math.max(0, Math.min(1, satietyRoll)) : Math.random();
-        const powerRatio = Math.min(1.0, cauldron.cookingPower / maxPower);
+        const powerRatio = Math.min(1.0, cauldronData.cookingPower / maxPower);
         const bonusPoints = (cauldronData.satietyBonusPercent / maxBonus) * 20;
         const satietyScore = Math.max(0, Math.min(100, Math.round(
             (safeSatietyRoll * 40) + (powerRatio * 40) + bonusPoints
