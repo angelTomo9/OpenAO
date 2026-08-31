@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
-import {
-    AncientRunicLeatherScribeSatchelBenchEngine,
-    ActiveSatchelBench,
-} from "../lib/ancientRunicLeatherScribeSatchelBench";
+import { AncientRunicLeatherScribeSatchelBenchEngine } from "../lib/ancientRunicLeatherScribeSatchelBench";
+import type { ActiveSatchelBench } from "../lib/ancientRunicLeatherScribeSatchelBench";
 
 describe("AncientRunicLeatherScribeSatchelBenchEngine Satchel Benches & Scroll Satchels", () => {
     it("crafts Celestial Void Seraphic Bottomless Grimoire Haversack in Archivist Sanctum achieving 100% fluidity and returns spliced leathers", () => {
