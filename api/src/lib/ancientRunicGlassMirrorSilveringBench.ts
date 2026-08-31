@@ -6,7 +6,7 @@ import crypto from "node:crypto";
  * raw silica glass sheets and pure silver foils (Polished Float Glass Sheet, Pure Argentum Silver Foil, Celestial Void Starlight Mirror Plate),
  * scrying mirrors and vanity reflection recipes (Illusionist Scrying Mirror, Sunflare Blinding Compact, Celestial Void True-Image Vanity),
  * independent specular reflectance ratings (0% to 100%), clamped illusion reflection and clamped scrying divination scaling,
- * upfront glass material deduction on all craft attempts, cached static catalog maxima, authoritative catalog power ratio, and silvering bench maintenance.
+ * upfront glass material deduction on all craft attempts, consistent remainingProvidedGlass return shapes, cached static catalog maxima, authoritative catalog power ratio, and silvering bench maintenance.
  */
 
 export type SilveringBenchType = "PINE_MIRROR_SILVERING_BENCH" | "RUNIC_SILVER_REFLECTION_BED" | "CELESTIAL_VOID_TRUE_IMAGE_SANCTUM";
@@ -120,19 +120,22 @@ export class AncientRunicGlassMirrorSilveringBenchEngine {
         craftRoll = Math.random(),
         specularRoll = Math.random(),
         currentEpochMs = Date.now()
-    ): { success: boolean; mirror?: CraftedArcaneMirror; updatedBench?: ActiveSilveringBench; remainingDurability: number; remainingProvidedGlass?: RawGlassSheetType[]; reason?: string } {
+    ): { success: boolean; mirror?: CraftedArcaneMirror; updatedBench?: ActiveSilveringBench; remainingDurability: number; remainingProvidedGlass: RawGlassSheetType[]; reason?: string } {
+        const fallbackGlass = Array.isArray(providedGlass) ? [...providedGlass] : [];
+
         if (!bench || !bench.isFunctional || bench.currentDurability < this.DURABILITY_COST_PER_CRAFT) {
             return {
                 success: false,
                 updatedBench: bench,
                 remainingDurability: bench?.currentDurability ?? 0,
+                remainingProvidedGlass: fallbackGlass,
                 reason: `Silvering bench is oxidized or lacks durability (requires ${this.DURABILITY_COST_PER_CRAFT}).`,
             };
         }
 
         const benchData = SILVERING_CATALOG[bench.benchType];
         if (!benchData) {
-            return { success: false, updatedBench: bench, remainingDurability: bench.currentDurability, reason: `Unknown bench model: ${String(bench.benchType)}` };
+            return { success: false, updatedBench: bench, remainingDurability: bench.currentDurability, remainingProvidedGlass: fallbackGlass, reason: `Unknown bench model: ${String(bench.benchType)}` };
         }
 
         const recipe = MIRROR_RECIPE_CATALOG[recipeType];
@@ -141,7 +144,7 @@ export class AncientRunicGlassMirrorSilveringBenchEngine {
         }
 
         if (!Array.isArray(providedGlass)) {
-            return { success: false, updatedBench: bench, remainingDurability: bench.currentDurability, reason: "Invalid glass array." };
+            return { success: false, updatedBench: bench, remainingDurability: bench.currentDurability, remainingProvidedGlass: [], reason: "Invalid glass array." };
         }
 
         // Count matching glass sheets
@@ -151,6 +154,7 @@ export class AncientRunicGlassMirrorSilveringBenchEngine {
                 success: false,
                 updatedBench: bench,
                 remainingDurability: bench.currentDurability,
+                remainingProvidedGlass: fallbackGlass,
                 reason: `Insufficient glass sheet: requires ${recipe.requiredGlassCount}x ${recipe.requiredGlassType}, provided ${matchingCount}.`,
             };
         }
