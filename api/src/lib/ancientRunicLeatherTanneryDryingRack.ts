@@ -5,7 +5,7 @@ import crypto from "node:crypto";
  * Simulates tanning drying racks and curing frames (Hickory Drying Rack, Runic Iron Curing Frame, Celestial Void Softening Sanctum),
  * raw beast pelts and hides (Rough Boar Pelt, Prime Wyvern Hide, Celestial Void Stalker Fur),
  * cured supple leather recipes (Tanned Ranger Hide, Wyrmscale Reinforced Leather, Celestial Void Softened Fleece),
- * independent suppleness ratings (0% to 100%), durability resistance and clamped elemental warding scaling,
+ * independent suppleness ratings (0% to 100%), clamped durability resistance (0% to 100%) and clamped elemental warding (0% to 100%) scaling,
  * upfront pelt material deduction on all craft attempts, cached static catalog maxima, and drying rack maintenance.
  */
 
@@ -195,7 +195,7 @@ export class AncientRunicLeatherTanneryDryingRackEngine {
         )));
         const qualityMultiplier = 0.8 + ((supplenessScore / 100) * 0.4); // 0.8 to 1.2x
 
-        const finalDurabilityRes = Math.round(recipe.baseDurabilityResistancePercent * qualityMultiplier);
+        const finalDurabilityRes = Math.max(0, Math.min(100, Math.round(recipe.baseDurabilityResistancePercent * qualityMultiplier)));
         const finalWard = Math.max(0, Math.min(100, Math.round(recipe.baseElementalWardPercent * qualityMultiplier)));
 
         const uuid = this.generateSecureId();
