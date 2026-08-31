@@ -145,7 +145,6 @@ describe("AncientRunicGlassHourglassSandCasterEngine Hourglass Stands & Chronoma
             standType: "STAND" as any,
             currentDurability: 50,
             maxDurability: 50,
-            chronomanticPower: 10,
             isFunctional: true,
         };
 

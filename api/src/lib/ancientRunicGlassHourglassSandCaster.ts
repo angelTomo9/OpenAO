@@ -6,7 +6,7 @@ import crypto from "node:crypto";
  * raw fused quartz bulbs and chronomantic sand phials (Fused Quartz Glass Bulb, Chronomantic Gold Sand Phial, Celestial Void Temporal Stardust Ampoule),
  * temporal tether hourglasses and epoch clepsydra recipes (Wanderer Chrono-Tether Hourglass, Time-Warp Spell-Haste Sandglass, Celestial Void Chronos Epoch Clepsydra),
  * independent temporal precision ratings (scaled across catalog baselines ~14% to 100%), calibrated clamped cooldown reduction aura and clamped haste flow duration scaling,
- * upfront bulb material deduction on all craft attempts, consistent remainingProvidedBulbs return shapes across all paths, cached static catalog maxima, authoritative catalog power ratio, and hourglass stand maintenance.
+ * upfront bulb material deduction on all craft attempts, consistent remainingProvidedBulbs return shapes across all paths, cached static catalog maxima, authoritative catalog power ratio without dead instance fields, and hourglass stand maintenance.
  */
 
 export type HourglassStandType = "CEDAR_HOURGLASS_CASTER_STAND" | "RUNIC_BRASS_CHRONOMANTIC_GIMBAL" | "CELESTIAL_VOID_CHRONOS_FLOW_SANCTUM";
@@ -35,7 +35,6 @@ export interface ActiveHourglassStand {
     standType: HourglassStandType;
     currentDurability: number;
     maxDurability: number;
-    chronomanticPower: number;
     isFunctional: boolean;
 }
 
@@ -104,7 +103,6 @@ export class AncientRunicGlassHourglassSandCasterEngine {
             standType,
             currentDurability: data.maxDurability,
             maxDurability: data.maxDurability,
-            chronomanticPower: data.chronomanticPower,
             isFunctional: true,
         };
     }
