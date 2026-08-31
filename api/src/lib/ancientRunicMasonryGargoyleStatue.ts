@@ -6,7 +6,7 @@ import crypto from "node:crypto";
  * quarried stone blocks (Weathered Basalt Block, Arcane Marble Monolith, Celestial Voidstone Slab),
  * sentinel guardian statue recipes (Gargoyle Lookout Sentry, Archon Bastion Monument, Celestial Void Colossus Ward),
  * independent bastion resilience ratings (0% to 100%), defense armor and threat generation scaling,
- * upfront stone block deduction on all craft attempts, cached static catalog maxima, and sculptor station maintenance.
+ * upfront stone block deduction on all craft attempts, cached static catalog maxima, crypto-secure UUID fallback, and sculptor station maintenance.
  */
 
 export type SculptorTableType = "HARDENED_GRANITE_BANKER_TABLE" | "RUNIC_MITHRIL_SCULPTOR_STATION" | "CELESTIAL_VOID_COLOSSUS_ANVIL";
@@ -75,6 +75,19 @@ export class AncientRunicMasonryGargoyleStatueEngine {
     };
 
     /**
+     * Generates a crypto-secure UUID or collision-resistant hex string.
+     */
+    private static generateSecureId(currentEpochMs = Date.now()): string {
+        if (typeof crypto.randomUUID === "function") {
+            return crypto.randomUUID();
+        }
+        if (typeof crypto.randomBytes === "function") {
+            return crypto.randomBytes(16).toString("hex");
+        }
+        return `${currentEpochMs}_${Math.random().toString(36).substring(2, 15)}`;
+    }
+
+    /**
      * Constructs and initializes a sculptor banker table or colossus station.
      */
     public static constructTable(
@@ -87,7 +100,7 @@ export class AncientRunicMasonryGargoyleStatueEngine {
             throw new Error(`Unsupported sculptor table type: ${String(tableType)}`);
         }
 
-        const uuid = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${currentEpochMs}_${Math.random()}`;
+        const uuid = this.generateSecureId(currentEpochMs);
 
         return {
             tableId: `sculptor_${tableType.toLowerCase()}_${uuid}`,
@@ -102,6 +115,7 @@ export class AncientRunicMasonryGargoyleStatueEngine {
 
     /**
      * Carves quarried stone blocks into sentinel gargoyles, archon monuments, and void colossus wards.
+     * Note: Mutates the passed `table` in place and returns it as `updatedTable` for caller convenience.
      */
     public static craftStatue(
         table: ActiveSculptorTable,
@@ -110,10 +124,11 @@ export class AncientRunicMasonryGargoyleStatueEngine {
         craftRoll = Math.random(),
         resilienceRoll = Math.random(),
         currentEpochMs = Date.now()
-    ): { success: boolean; statue?: CraftedSentinelStatue; remainingDurability: number; remainingProvidedBlocks?: QuarriedStoneBlockType[]; reason?: string } {
+    ): { success: boolean; statue?: CraftedSentinelStatue; updatedTable?: ActiveSculptorTable; remainingDurability: number; remainingProvidedBlocks?: QuarriedStoneBlockType[]; reason?: string } {
         if (!table || !table.isFunctional || table.currentDurability < this.DURABILITY_COST_PER_CRAFT) {
             return {
                 success: false,
+                updatedTable: table,
                 remainingDurability: table?.currentDurability ?? 0,
                 reason: `Sculptor table is cracked or lacks durability (requires ${this.DURABILITY_COST_PER_CRAFT}).`,
             };
@@ -121,16 +136,16 @@ export class AncientRunicMasonryGargoyleStatueEngine {
 
         const tableData = SCULPTOR_CATALOG[table.tableType];
         if (!tableData) {
-            return { success: false, remainingDurability: table.currentDurability, reason: `Unknown table model: ${String(table.tableType)}` };
+            return { success: false, updatedTable: table, remainingDurability: table.currentDurability, reason: `Unknown table model: ${String(table.tableType)}` };
         }
 
         const recipe = STATUE_RECIPE_CATALOG[recipeType];
         if (!recipe) {
-            return { success: false, remainingDurability: table.currentDurability, reason: `Unknown statue recipe: ${String(recipeType)}` };
+            return { success: false, updatedTable: table, remainingDurability: table.currentDurability, reason: `Unknown statue recipe: ${String(recipeType)}` };
         }
 
         if (!Array.isArray(providedBlocks)) {
-            return { success: false, remainingDurability: table.currentDurability, reason: "Invalid stone blocks array." };
+            return { success: false, updatedTable: table, remainingDurability: table.currentDurability, reason: "Invalid stone blocks array." };
         }
 
         // Count matching blocks
@@ -138,12 +153,13 @@ export class AncientRunicMasonryGargoyleStatueEngine {
         if (matchingCount < recipe.requiredBlockCount) {
             return {
                 success: false,
+                updatedTable: table,
                 remainingDurability: table.currentDurability,
                 reason: `Insufficient stone blocks: requires ${recipe.requiredBlockCount}x ${recipe.requiredBlockType}, provided ${matchingCount}.`,
             };
         }
 
-        // Deduct durability
+        // Deduct durability in place
         table.currentDurability -= this.DURABILITY_COST_PER_CRAFT;
         if (table.currentDurability < this.DURABILITY_COST_PER_CRAFT) {
             table.currentDurability = Math.max(0, table.currentDurability);
@@ -166,6 +182,7 @@ export class AncientRunicMasonryGargoyleStatueEngine {
         if (rollPercent > tableData.baseSuccessRatePercent) {
             return {
                 success: false,
+                updatedTable: table,
                 remainingDurability: table.currentDurability,
                 remainingProvidedBlocks: remaining,
                 reason: `Masonry fractured: chisel struck fault line in stone core, rolled ${rollPercent.toFixed(1)}, needed <= ${tableData.baseSuccessRatePercent}.`,
@@ -185,7 +202,7 @@ export class AncientRunicMasonryGargoyleStatueEngine {
         const finalArmor = Math.round(recipe.baseDefenseArmor * qualityMultiplier);
         const finalThreat = Math.round(recipe.baseThreatGenerationPercent * qualityMultiplier);
 
-        const uuid = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${currentEpochMs}_${Math.random()}`;
+        const uuid = this.generateSecureId(currentEpochMs);
 
         const statue: CraftedSentinelStatue = {
             statueId: `statue_${recipeType.toLowerCase()}_${uuid}`,
@@ -202,6 +219,7 @@ export class AncientRunicMasonryGargoyleStatueEngine {
         return {
             success: true,
             statue,
+            updatedTable: table,
             remainingDurability: table.currentDurability,
             remainingProvidedBlocks: remaining,
         };
