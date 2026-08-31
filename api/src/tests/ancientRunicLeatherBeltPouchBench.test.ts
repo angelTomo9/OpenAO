@@ -116,7 +116,7 @@ describe("AncientRunicLeatherBeltPouchBenchEngine Pouch Benches & Alchemical Sat
         expect(fail.remainingDurability).toBe(65); // 75 - 10
     });
 
-    it("gates isFunctional in maintainBench based on DURABILITY_COST_PER_CRAFT threshold", () => {
+    it("gates isFunctional in maintainBench based on DURABILITY_COST_PER_CRAFT threshold and returns clone", () => {
         const bench = AncientRunicLeatherBeltPouchBenchEngine.constructBench("leather_04", "OAK_POUCH_STITCHING_BENCH");
         bench.currentDurability = 0;
         bench.isFunctional = false;
@@ -126,9 +126,10 @@ describe("AncientRunicLeatherBeltPouchBenchEngine Pouch Benches & Alchemical Sat
         expect(repLow.success).toBe(true);
         expect(repLow.newDurability).toBe(5);
         expect(repLow.isFunctional).toBe(false);
+        expect(bench.currentDurability).toBe(0); // input unchanged
 
-        // Maintain 10 more -> 15 (>= 10) -> isFunctional becomes true
-        const repHigh = AncientRunicLeatherBeltPouchBenchEngine.maintainBench(bench, 10);
+        // Maintain 10 more on clone -> 15 (>= 10) -> isFunctional becomes true
+        const repHigh = AncientRunicLeatherBeltPouchBenchEngine.maintainBench(repLow.updatedBench!, 10);
         expect(repHigh.success).toBe(true);
         expect(repHigh.newDurability).toBe(15);
         expect(repHigh.isFunctional).toBe(true);

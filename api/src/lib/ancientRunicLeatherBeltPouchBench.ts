@@ -6,7 +6,7 @@ import crypto from "node:crypto";
  * raw tanned calfskin and polished brass toggle clasps (Tanned Calfskin Pouch Blank, Polished Brass Toggle Clasp, Celestial Void Starlight Alchemical Leather),
  * adventurer belt pouches and seraphic bottomless satchel recipes (Adventurer Quick-Access Belt Pouch, Alchemist Spill-Proof Herb Pouch, Celestial Void Seraphic Bottomless Satchel),
  * independent quick-draw accessibility ratings (scaled across catalog baselines ~14% to 100%), calibrated clamped potion consumable cooldown reduction and clamped herb freshness preservation scaling,
- * upfront leather material deduction on all craft attempts, consistent remainingProvidedLeathers return shapes across all paths, immutable bench cloning for safe rollbacks, cached static catalog maxima, crypto-secure default gameplay rolls strictly in [0, 1), authoritative catalog power ratio without dead instance fields, and pouch bench maintenance.
+ * upfront leather material deduction on all craft attempts, consistent remainingProvidedLeathers return shapes across all paths, immutable bench cloning for safe rollbacks on both craft and maintain operations, cached static catalog maxima, crypto-secure default gameplay rolls strictly in [0, 1), authoritative catalog power ratio without dead instance fields, and pouch bench maintenance.
  */
 
 export type PouchBenchType = "OAK_POUCH_STITCHING_BENCH" | "RUNIC_IRONWOOD_REAGENT_POUCH_RIG" | "CELESTIAL_VOID_SERAPHIC_SATCHEL_SANCTUM";
@@ -238,21 +238,24 @@ export class AncientRunicLeatherBeltPouchBenchEngine {
 
     /**
      * Re-tightens toggle clamp vises and maintains pouch bench.
+     * Returns an updated clone of `bench` leaving the input instance immutable.
      */
     public static maintainBench(
         bench: ActivePouchBench,
         repairAmount = 50
-    ): { success: boolean; newDurability: number; isFunctional: boolean } {
+    ): { success: boolean; updatedBench?: ActivePouchBench; newDurability: number; isFunctional: boolean } {
         if (!bench) return { success: false, newDurability: 0, isFunctional: false };
 
+        const updatedBench = { ...bench };
         const amt = Number.isFinite(repairAmount) ? Math.max(0, repairAmount) : 50;
-        bench.currentDurability = Math.min(bench.maxDurability, bench.currentDurability + amt);
-        bench.isFunctional = bench.currentDurability >= this.DURABILITY_COST_PER_CRAFT;
+        updatedBench.currentDurability = Math.min(updatedBench.maxDurability, updatedBench.currentDurability + amt);
+        updatedBench.isFunctional = updatedBench.currentDurability >= this.DURABILITY_COST_PER_CRAFT;
 
         return {
             success: true,
-            newDurability: bench.currentDurability,
-            isFunctional: bench.isFunctional,
+            updatedBench,
+            newDurability: updatedBench.currentDurability,
+            isFunctional: updatedBench.isFunctional,
         };
     }
 }
