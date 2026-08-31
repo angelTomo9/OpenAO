@@ -6,7 +6,7 @@ import crypto from "node:crypto";
  * mineral ore veins (Granite Copper Deposit, Astral Mithril Seam, Void Adamantite Lode),
  * extracted raw gems & ores (Raw Malachite, Astral Mithril Chunk, Void Adamantite Core),
  * independent prospecting depth ratings (0% to 100%), ore yield and gem bonus scaling,
- * and pickaxe sharpening maintenance.
+ * dynamic catalog maximum scaling, and pickaxe sharpening maintenance.
  */
 
 export type MiningToolType = "NOVICE_BRONZE_PICKAXE" | "RUNIC_MITHRIL_MINING_DRILL" | "CELESTIAL_VOID_CORE_SLEDGE";
@@ -64,6 +64,16 @@ export const VEIN_CATALOG: Record<MineralVeinType, MineralVeinData> = {
 
 export class AncientRunicMiningExcavationProspectingEngine {
     public static readonly DURABILITY_COST_PER_EXCAVATION = 10;
+
+    /**
+     * Helper to compute maximum power and bonus dynamically from catalog.
+     */
+    public static getCatalogMaxima(): { maxPower: number; maxBonus: number } {
+        const tools = Object.values(TOOL_CATALOG);
+        const maxPower = Math.max(...tools.map(t => t.miningPower), 1);
+        const maxBonus = Math.max(...tools.map(t => t.yieldBonusPercent), 1);
+        return { maxPower, maxBonus };
+    }
 
     /**
      * Constructs and initializes a mining pickaxe or drill.
@@ -146,10 +156,11 @@ export class AncientRunicMiningExcavationProspectingEngine {
             };
         }
 
-        // Calculate independent prospecting depth score (0% to 100%)
+        // Calculate independent prospecting depth score (0% to 100%) dynamically using catalog maxima
+        const { maxPower, maxBonus } = this.getCatalogMaxima();
         const safeDepthRoll = Number.isFinite(depthRoll) ? Math.max(0, Math.min(1, depthRoll)) : Math.random();
-        const powerRatio = Math.min(1.0, tool.miningPower / 120);
-        const bonusPoints = (toolData.yieldBonusPercent / 35) * 20;
+        const powerRatio = Math.min(1.0, tool.miningPower / maxPower);
+        const bonusPoints = (toolData.yieldBonusPercent / maxBonus) * 20;
         const depthScore = Math.max(0, Math.min(100, Math.round(
             (safeDepthRoll * 40) + (powerRatio * 40) + bonusPoints
         )));

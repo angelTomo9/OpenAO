@@ -28,6 +28,23 @@ describe("AncientRunicMiningExcavationProspectingEngine Ore Extraction & Geodes"
         expect(excRes.remainingDurability).toBe(300); // 310 - 10
     });
 
+    it("handles tool becoming non-functional after successful excavation when durability falls below threshold", () => {
+        const tool = AncientRunicMiningExcavationProspectingEngine.forgeTool("miner_wear", "NOVICE_BRONZE_PICKAXE", 100000);
+        tool.currentDurability = 15;
+        expect(tool.isFunctional).toBe(true);
+
+        // First excavation succeeds: 15 - 10 = 5 (< 10), so isFunctional flips to false
+        const exc1 = AncientRunicMiningExcavationProspectingEngine.excavateVein(tool, "GRANITE_COPPER_DEPOSIT", 0.1);
+        expect(exc1.success).toBe(true);
+        expect(exc1.remainingDurability).toBe(5);
+        expect(tool.isFunctional).toBe(false);
+
+        // Subsequent excavation is rejected
+        const exc2 = AncientRunicMiningExcavationProspectingEngine.excavateVein(tool, "GRANITE_COPPER_DEPOSIT");
+        expect(exc2.success).toBe(false);
+        expect(exc2.reason).toContain("blunted or lacks durability");
+    });
+
     it("rejects excavation when tool has insufficient mining power for hard veins", () => {
         const tool = AncientRunicMiningExcavationProspectingEngine.forgeTool("miner_02", "NOVICE_BRONZE_PICKAXE", 100000); // Power 25
 
