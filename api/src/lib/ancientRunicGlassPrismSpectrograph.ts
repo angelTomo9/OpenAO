@@ -6,7 +6,7 @@ import crypto from "node:crypto";
  * raw flint glass prisms and fluorite dispersion crystals (Flint Glass Triangular Prism, Fluorite Chromatic Dispersion Crystal, Celestial Void Rainbow Aurora Prism),
  * solar flare spectrographs and seraphic aurora recipes (Solar Flare Dispersion Spectrograph, Lunar Rainbow Chromatic Prism, Celestial Void Seraphic Aurora Spectrograph),
  * independent chromatic dispersion ratings (scaled across catalog baselines ~14% to 100%), calibrated clamped magic pierce and clamped spell critical scaling,
- * upfront prism material deduction on all craft attempts, consistent remainingProvidedPrisms return shapes across all paths, cached static catalog maxima, authoritative catalog power ratio without dead instance fields, and spectrograph bench maintenance.
+ * upfront prism material deduction on all craft attempts, consistent remainingProvidedPrisms return shapes across all paths, cached static catalog maxima, crypto-secure default gameplay rolls, authoritative catalog power ratio without dead instance fields, and spectrograph bench maintenance.
  */
 
 export type SpectrographBenchType = "PINE_PRISM_SPECTROGRAPH_BENCH" | "RUNIC_BRASS_DISPERSION_GONIOMETER" | "CELESTIAL_VOID_PRISMATIC_AURORA_SANCTUM";
@@ -84,6 +84,16 @@ export class AncientRunicGlassPrismSpectrographEngine {
     }
 
     /**
+     * Generates a cryptographically secure random float in [0, 1).
+     */
+    public static generateSecureRoll(): number {
+        if (typeof crypto.randomInt === "function") {
+            return crypto.randomInt(0, 1000000) / 1000000;
+        }
+        return crypto.randomBytes(4).readUInt32LE(0) / 0xffffffff;
+    }
+
+    /**
      * Constructs and initializes a prism spectrograph bench or dispersion goniometer.
      */
     public static constructBench(
@@ -115,8 +125,8 @@ export class AncientRunicGlassPrismSpectrographEngine {
         bench: ActiveSpectrographBench,
         recipeType: ChromaticSpectrographRecipeType,
         providedPrisms: RawTriangularPrismType[],
-        craftRoll = Math.random(),
-        dispersionRoll = Math.random(),
+        craftRoll?: number,
+        dispersionRoll?: number,
         currentEpochMs = Date.now()
     ): { success: boolean; spectrograph?: CraftedChromaticSpectrograph; updatedBench?: ActiveSpectrographBench; remainingDurability: number; remainingProvidedPrisms: RawTriangularPrismType[]; reason?: string } {
         const fallbackPrisms = Array.isArray(providedPrisms) ? [...providedPrisms] : [];
@@ -174,7 +184,7 @@ export class AncientRunicGlassPrismSpectrographEngine {
             }
         }
 
-        const safeRoll = Number.isFinite(craftRoll) ? Math.max(0, Math.min(1, craftRoll)) : Math.random();
+        const safeRoll = typeof craftRoll === "number" && Number.isFinite(craftRoll) ? Math.max(0, Math.min(1, craftRoll)) : this.generateSecureRoll();
         const rollPercent = safeRoll * 100;
 
         if (rollPercent > benchData.baseSuccessRatePercent) {
@@ -189,7 +199,7 @@ export class AncientRunicGlassPrismSpectrographEngine {
 
         // Calculate independent chromatic dispersion score dynamically using cached catalog maxima & authoritative catalog values (clamped 0% to 100%, scaling across catalog baselines)
         const { maxPower, maxBonus } = this.CATALOG_MAXIMA;
-        const safeDispersionRoll = Number.isFinite(dispersionRoll) ? Math.max(0, Math.min(1, dispersionRoll)) : Math.random();
+        const safeDispersionRoll = typeof dispersionRoll === "number" && Number.isFinite(dispersionRoll) ? Math.max(0, Math.min(1, dispersionRoll)) : this.generateSecureRoll();
         const powerRatio = Math.min(1.0, benchData.glazieryPower / maxPower);
         const bonusPoints = (benchData.chromaticBonusPercent / maxBonus) * 20;
         const dispersionScore = Math.max(0, Math.min(100, Math.round(
