@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
     AncientRunicGlassStainedChandelierEngine,
     ActiveChandelierHoist,
-} from "../lib/ancientRunicGlassStainedChandelier.js";
+} from "../lib/ancientRunicGlassStainedChandelier";
 
 describe("AncientRunicGlassStainedChandelierEngine Chandelier Hoists & Cathedral Coronas", () => {
     it("assembles Celestial Void Seraphic Cathedral Chandelier in Corona Sanctum achieving 100% radiance and returns spliced cupolas", () => {
