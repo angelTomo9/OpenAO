@@ -6,7 +6,7 @@ import crypto from "node:crypto";
  * oceanic depth zones (Coastal Reef Shallows, Abyssal Trench Rift, Celestial Astral Whirlpool),
  * ancient aquatic catches (Prismatic Reef Fin, Abyssal Kraken Tentacle, Celestial Leviathan Heart),
  * independent angling quality ratings (0% to 100%), catch yield and rare trophy scaling,
- * dynamic catalog maximum scaling, and tackle maintenance.
+ * cached static catalog maxima, and tackle maintenance.
  */
 
 export type HarpoonToolType = "REINFORCED_BONE_HARPOON" | "RUNIC_MITHRIL_OCEANIC_ROD" | "CELESTIAL_VOID_LEVIATHAN_BALLISTA";
@@ -66,14 +66,12 @@ export class AncientRunicFishingOceanicHarpoonEngine {
     public static readonly DURABILITY_COST_PER_CAST = 10;
 
     /**
-     * Helper to compute maximum power and bonus dynamically from catalog.
+     * Cached catalog maxima to optimize hot performance loops.
      */
-    public static getCatalogMaxima(): { maxPower: number; maxBonus: number } {
-        const tools = Object.values(HARPOON_CATALOG);
-        const maxPower = Math.max(...tools.map(t => t.anglingPower), 1);
-        const maxBonus = Math.max(...tools.map(t => t.catchBonusPercent), 1);
-        return { maxPower, maxBonus };
-    }
+    public static readonly CATALOG_MAXIMA = {
+        maxPower: Math.max(...Object.values(HARPOON_CATALOG).map(t => t.anglingPower), 1),
+        maxBonus: Math.max(...Object.values(HARPOON_CATALOG).map(t => t.catchBonusPercent), 1),
+    };
 
     /**
      * Constructs and initializes an oceanic harpoon or rod.
@@ -156,8 +154,8 @@ export class AncientRunicFishingOceanicHarpoonEngine {
             };
         }
 
-        // Calculate independent angling quality score (0% to 100%) dynamically using catalog maxima
-        const { maxPower, maxBonus } = this.getCatalogMaxima();
+        // Calculate independent angling quality score (0% to 100%) using cached catalog maxima
+        const { maxPower, maxBonus } = this.CATALOG_MAXIMA;
         const safeQualityRoll = Number.isFinite(qualityRoll) ? Math.max(0, Math.min(1, qualityRoll)) : Math.random();
         const powerRatio = Math.min(1.0, tool.anglingPower / maxPower);
         const bonusPoints = (toolData.catchBonusPercent / maxBonus) * 20;
