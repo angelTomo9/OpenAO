@@ -28,12 +28,34 @@ describe("AncientRunicGlassEngravingLatheEngine Engraving Lathes & Crystal Glass
         expect(craftRes.success).toBe(true);
         expect(craftRes.glassware?.recipeType).toBe("CELESTIAL_VOID_RELIQUARY_FLACON");
         expect(craftRes.glassware?.runicResonancePercent).toBe(100);
-        expect(craftRes.glassware?.finalSpellEmpowerPercent).toBe(100); // 85 * 1.20 = 102 -> clamped to 100%
+        expect(craftRes.glassware?.finalSpellEmpowerPercent).toBe(96); // 80 * 1.20 = 96%
         expect(craftRes.glassware?.finalManaConservationPercent).toBe(72); // 60 * 1.20 = 72%
         expect(craftRes.glassware?.consumedBlankCount).toBe(2);
         expect(craftRes.glassware?.consumedBlankType).toBe("CELESTIAL_VOID_STARLIGHT_FLACON");
         expect(craftRes.glassware?.remainingProvidedBlanks.length).toBe(1);
         expect(craftRes.remainingDurability).toBe(300); // 310 - 10
+    });
+
+    it("verifies mid-range resonance roll and sub-100% quality scaling on Cedar lathe", () => {
+        const lathe = AncientRunicGlassEngravingLatheEngine.constructLathe("engraver_mid", "CEDAR_GLASS_ENGRAVING_LATHE");
+        // powerRatio = 25/120 = 0.20833, bonusPoints = (10/35)*20 = 5.714
+        // safeResonanceRoll = 0.5 -> 0.5 * 40 = 20
+        // resonanceScore = Math.round(20 + 8.333 + 5.714) = 34
+        // qualityMultiplier = 0.8 + (34/100)*0.4 = 0.8 + 0.136 = 0.936
+        // finalEmpower = Math.round(20 * 0.936) = 19
+        // finalConservation = Math.round(10 * 0.936) = 9
+        const craftRes = AncientRunicGlassEngravingLatheEngine.engraveGlassware(
+            lathe,
+            "CHALICE_OF_SOVEREIGN_VITALITY",
+            ["QUARTZ_CRYSTAL_GOBLET_BLANK", "QUARTZ_CRYSTAL_GOBLET_BLANK"],
+            0.1,
+            0.5
+        );
+
+        expect(craftRes.success).toBe(true);
+        expect(craftRes.glassware?.runicResonancePercent).toBe(34);
+        expect(craftRes.glassware?.finalSpellEmpowerPercent).toBe(19);
+        expect(craftRes.glassware?.finalManaConservationPercent).toBe(9);
     });
 
     it("handles lathe becoming non-functional after successful craft when durability falls below threshold", () => {

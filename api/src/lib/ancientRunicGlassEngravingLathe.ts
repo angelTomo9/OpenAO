@@ -60,7 +60,7 @@ export const LATHE_CATALOG: Record<EngravingLatheType, EngravingLatheData> = {
 export const ENGRAVED_RECIPE_CATALOG: Record<EngravedGlasswareRecipeType, EngravedGlasswareRecipeData> = {
     CHALICE_OF_SOVEREIGN_VITALITY: { recipeType: "CHALICE_OF_SOVEREIGN_VITALITY", requiredBlankType: "QUARTZ_CRYSTAL_GOBLET_BLANK", requiredBlankCount: 2, baseSpellEmpowerPercent: 20, baseManaConservationPercent: 10 },
     DECANTER_OF_ARCANE_CLARITY: { recipeType: "DECANTER_OF_ARCANE_CLARITY", requiredBlankType: "LEAD_CRYSTAL_DECANTER_BLANK", requiredBlankCount: 2, baseSpellEmpowerPercent: 45, baseManaConservationPercent: 25 },
-    CELESTIAL_VOID_RELIQUARY_FLACON: { recipeType: "CELESTIAL_VOID_RELIQUARY_FLACON", requiredBlankType: "CELESTIAL_VOID_STARLIGHT_FLACON", requiredBlankCount: 2, baseSpellEmpowerPercent: 85, baseManaConservationPercent: 60 },
+    CELESTIAL_VOID_RELIQUARY_FLACON: { recipeType: "CELESTIAL_VOID_RELIQUARY_FLACON", requiredBlankType: "CELESTIAL_VOID_STARLIGHT_FLACON", requiredBlankCount: 2, baseSpellEmpowerPercent: 80, baseManaConservationPercent: 60 },
 };
 
 export class AncientRunicGlassEngravingLatheEngine {
