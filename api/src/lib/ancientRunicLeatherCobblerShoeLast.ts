@@ -5,7 +5,7 @@ import crypto from "node:crypto";
  * Simulates cobbler shoe lasts and wooden forming benches (Oak Cobbler Last Bench, Runic Ironwood Shoe Tree, Celestial Void Swift-Tread Sanctum),
  * raw tanned leather soles and reinforced wyrmhide vamps (Tanned Cowhide Sole Plate, Reinforced Wyrmhide Boot Vamp, Celestial Void Starlight Tread Leather),
  * scout moccasins and seraphic winged greaves recipes (Scout Swift-Stride Moccasin, Ranger Iron-Tread Marching Boot, Celestial Void Seraphic Winged Greave),
- * independent tread traction ratings (0% to 100%), calibrated clamped movement speed and clamped terrain fatigue resistance scaling,
+ * independent tread traction ratings (scaled across catalog baselines ~14% to 100%), calibrated clamped movement speed and clamped terrain fatigue resistance scaling,
  * upfront sole material deduction on all craft attempts, consistent remainingProvidedSoles return shapes across all paths, cached static catalog maxima, authoritative catalog power ratio, and cobbler bench maintenance.
  */
 
@@ -44,7 +44,7 @@ export interface CraftedCobblerFootwear {
     recipeType: CobblerFootwearRecipeType;
     finalMovementSpeedPercent: number;
     finalTerrainFatigueResistancePercent: number;
-    treadTractionPercent: number; // 0 to 100
+    treadTractionPercent: number; // Scaled rating (clamped 0 to 100%, with catalog bench baselines ~14% to 100%)
     consumedSoleCount: number;
     consumedSoleType: RawLeatherSoleType;
     remainingProvidedSoles: RawLeatherSoleType[];
@@ -189,7 +189,7 @@ export class AncientRunicLeatherCobblerShoeLastEngine {
             };
         }
 
-        // Calculate independent tread traction score (0% to 100%) dynamically using cached catalog maxima & authoritative catalog values
+        // Calculate independent tread traction score dynamically using cached catalog maxima & authoritative catalog values (clamped 0% to 100%, scaling across catalog baselines)
         const { maxPower, maxBonus } = this.CATALOG_MAXIMA;
         const safeTractionRoll = Number.isFinite(tractionRoll) ? Math.max(0, Math.min(1, tractionRoll)) : Math.random();
         const powerRatio = Math.min(1.0, lastData.cobblingPower / maxPower);
