@@ -5,7 +5,7 @@ import crypto from "node:crypto";
  * Simulates potter kickwheels and ceramic kilns (Clay Potter Kickwheel, Runic Stone Kiln, Celestial Void Kiln Sanctum),
  * refined elemental pottery clays (Terracotta River Clay, Glazed Arcane Kaolin, Celestial Void Ceramic Paste),
  * wheel-thrown urn and amphora recipes (Apothecary Herb Urn, Enchanted Elixir Amphora, Celestial Void Essence Reservoir),
- * independent vitrification ratings (0% to 100%), potion preservation duration and decay mitigation scaling,
+ * independent vitrification ratings (0% to 100%), potion preservation duration and clamped decay mitigation (0% to 100%) scaling,
  * upfront clay material deduction on all craft attempts, cached static catalog maxima, and potter kickwheel maintenance.
  */
 
@@ -196,7 +196,7 @@ export class AncientRunicPotteryCeramicVaseEngine {
         const qualityMultiplier = 0.8 + ((vitrificationScore / 100) * 0.4); // 0.8 to 1.2x
 
         const finalDuration = Math.round(recipe.basePreservationDurationSec * qualityMultiplier);
-        const finalMitigation = Math.round(recipe.baseDecayMitigationPercent * qualityMultiplier);
+        const finalMitigation = Math.max(0, Math.min(100, Math.round(recipe.baseDecayMitigationPercent * qualityMultiplier)));
 
         const uuid = this.generateSecureId();
 
